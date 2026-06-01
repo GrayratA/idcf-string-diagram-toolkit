@@ -2,7 +2,7 @@
 
 This folder contains both supported input styles for `identify_counterfactual`:
 
-- `examples/string_diagrams/`: StringDiagram inputs (Catlab hom expressions).
+- `examples/string_diagrams/`: StringDiagram inputs (Catlab diagram definitions built with `@present`/`@program`).
 - `examples/admg_models/`: ADMG inputs (`ADMGModel` or BN-imported ADMG).
 - `examples/queries/`: counterfactual query sets.
 

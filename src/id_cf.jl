@@ -1791,7 +1791,15 @@ end
 
 function _resolve_base_scm_input(model_or_base, display_var::Set{Symbol})
     if model_or_base isa WiringDiagram
-        return deepcopy(model_or_base)
+        wd = deepcopy(model_or_base)
+        recovered = _recover_confounded_from_scm_wd(wd)
+        if recovered !== nothing
+            if isempty(display_var)
+                return graph_b_to_scm(recovered)
+            end
+            return graph_b_to_scm(recovered; outputs=display_var)
+        end
+        return wd
     end
 
     if @isdefined(to_wiring_diagram) && applicable(to_wiring_diagram, model_or_base)

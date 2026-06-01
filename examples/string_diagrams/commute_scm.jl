@@ -2,7 +2,7 @@ using Catlab
 using Catlab.Theories
 using Catlab.Programs
 
-@present ReviewerCommuteSCM(FreeCartesianCategory) begin
+@present CommuteSCM(FreeCartesianCategory) begin
     (W, T, M, L, Y, R1, UW, UT, UM, UL, UY, UR1)::Ob
     f_W::Hom(UW, W)
     f_T::Hom(W ⊗ R1 ⊗ UT, T)
@@ -18,7 +18,7 @@ using Catlab.Programs
     PU_R1::Hom(munit(), UR1)
 end
 
-base_wd = @program ReviewerCommuteSCM () begin
+base_wd = @program CommuteSCM () begin
     u_w = PU_W()
     w = f_W(u_w)
 
@@ -42,7 +42,7 @@ end
 
 (
     name="commute_scm",
-    input=to_hom_expr(FreeCartesianCategory, base_wd),
+    input=base_wd,
     display_syms=[:W, :T, :M, :L, :Y],
     output_vars=["Y"],
 )

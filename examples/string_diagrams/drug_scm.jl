@@ -2,7 +2,7 @@ using Catlab
 using Catlab.Theories
 using Catlab.Programs
 
-@present ReviewerDrugSCM(FreeCartesianCategory) begin
+@present DrugSCM(FreeCartesianCategory) begin
     (X, W, D, Z, Y, R1, UX, UW, UD, UZ, UY, UR1)::Ob
     f_X::Hom(R1 ⊗ UX, X)
     f_W::Hom(X ⊗ UW, W)
@@ -18,7 +18,7 @@ using Catlab.Programs
     PU_R1::Hom(munit(), UR1)
 end
 
-base_wd = @program ReviewerDrugSCM () begin
+base_wd = @program DrugSCM () begin
     u_r1 = PU_R1()
     r1 = f_R1(u_r1)
 
@@ -42,7 +42,7 @@ end
 
 (
     name="drug_scm",
-    input=to_hom_expr(FreeCartesianCategory, base_wd),
+    input=base_wd,
     display_syms=[:D, :Z, :X, :W, :Y],
     output_vars=["Y"],
 )
