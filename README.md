@@ -35,9 +35,9 @@ Run full Julia tests:
 julia --project=. test/runtest.jl
 ```
 
-## Reviewer Demo Quickstart
+## Demo Quickstart
 
-If you are reviewing the submission and want a reproducible run without editing code:
+If you want a reproducible run without editing code:
 
 1. Run the default commute StringDiagram example:
 
