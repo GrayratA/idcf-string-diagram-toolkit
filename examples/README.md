@@ -26,7 +26,10 @@ This folder contains both supported input styles for `identify_counterfactual`:
 ## Scenario Notes (Real-World Meaning)
 
 - `commute` (`commute_scm.jl` / `commute_admg.jl` + `commute_queries.jl`)
-  - Imagine a rainy Monday morning: conditions on the road (`W`) are already bad, and you still need to choose how to travel (`T`). That choice affects intermediate route dynamics (`M`, `L`) and ultimately your arrival quality (`Y`), such as delay. This scenario asks a practical "what if" question people care about all the time: under the same morning conditions, how likely is a different commute choice to change the final outcome? It is useful because it helps separate effects driven by background conditions from effects driven by your own decision.
+  - This scenario models a daily commuting setting with variables `O = {W, T, M, L, Y}`: weather (`W`), departure time (`T`), mode of transport (`M`), lateness (`L`), and final work performance (`Y`).
+  - The directed causal links are `W -> T`, `W -> M`, `T -> L`, `M -> L`, and `L -> Y`, with a bidirected edge `T <-> Y` representing latent confounding between departure time and final outcome.
+  - The counterfactual target in this example is the probability of `Y(1)` under an intervention `do(T(1)=t)`, while conditioning on evidence that in the factual world `W(2)=w` and `T(2)=t'`, and in an auxiliary world with `do(W(3)=w)` we observe `M(3)=m`.
+  - In plain terms: for someone who actually left at time `t'` on weather condition `w`, what would their work performance have been if they had left at time `t`, while also incorporating additional behavioral evidence that under the same weather they would use transport mode `m`?
 
 - `drug` (`drug_admg.jl` / `drug_scm.jl` + `drug_queries.jl`)
   - Imagine a patient treated with two drugs. Drug `X` and drug `D` both influence the final symptom `Y`, and `D` also affects an intermediate marker `Z` that doctors can observe. There is another pathway through `W`, so outcome changes are not explained by one variable alone.
@@ -42,12 +45,12 @@ This folder contains both supported input styles for `identify_counterfactual`:
 ## Variable Glossary
 
 - `commute` variables
-  - `W`: upstream context driver (for example weather/day-level conditions).
-  - `T`: travel choice/treatment-like decision variable.
-  - `M`: intermediate behavior or route-related mediator.
-  - `L`: downstream latent traffic-state/route-state mediator before the final outcome.
-  - `Y`: final commute outcome (for example delay, travel time, or utility).
-  - `R1`: latent shared disturbance creating unobserved dependence between `T` and `Y` in the ADMG form.
+  - `W`: weather condition.
+  - `T`: departure time.
+  - `M`: mode of transport.
+  - `L`: lateness.
+  - `Y`: final work performance.
+  - `R1`: latent shared disturbance creating unobserved dependence between `T` and `Y` in the ADMG/string-diagram construction.
 
 
 - `drug` variables
