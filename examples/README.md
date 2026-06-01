@@ -28,10 +28,10 @@ This folder contains both supported input styles for `identify_counterfactual`:
 - `commute` (`commute_scm.jl` / `commute_admg.jl` + `commute_queries.jl`)
   - Imagine a rainy Monday morning: conditions on the road (`W`) are already bad, and you still need to choose how to travel (`T`). That choice affects intermediate route dynamics (`M`, `L`) and ultimately your arrival quality (`Y`), such as delay. This scenario asks a practical "what if" question people care about all the time: under the same morning conditions, how likely is a different commute choice to change the final outcome? It is useful because it helps separate effects driven by background conditions from effects driven by your own decision.
 
-- `drug` (`drug_admg.jl` + `drug_queries.jl`)
+- `drug` (`drug_admg.jl` / `drug_scm.jl` + `drug_queries.jl`)
   - Think of a patient with baseline risk (`X`) who receives a treatment decision (`D`). That decision changes a biological marker (`Z`), while another health pathway (`W`) also contributes to the final clinical outcome (`Y`). The point is not just to describe what happened, but to ask how the outcome might have changed under an alternative treatment while keeping the patient's observed context fixed. In practice, this turns retrospective observations into a more decision-oriented treatment comparison.
 
-- `party` (`party_admg.jl` + `party_queries.jl`)
+- `party` (`party_admg.jl` / `party_scm.jl` + `party_queries.jl`)
   - This is the classic Ann-Bob-Carl party story. Ann’s attendance (`A`) influences whether Bob (`B`) and Carl (`C`) go, and the chance of a scuffle (`S`) depends strongly on whether Bob and Carl are both there. In the observed event, Bob did not attend, but the counterfactual asks what would likely have happened if he had gone, while keeping the rest of the situation aligned with the same night. It is a natural "alternate history" question that makes counterfactual reasoning intuitive.
 
 - `hepar2` (`hepar2_bn_admg.jl` + `hepar2_conditional_queries.jl`)
