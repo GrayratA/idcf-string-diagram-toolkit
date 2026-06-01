@@ -35,6 +35,77 @@ Run full Julia tests:
 julia --project=. test/runtest.jl
 ```
 
+## Reviewer Demo Quickstart
+
+If you are reviewing the submission and want a reproducible run without editing code:
+
+1. Run the default commute StringDiagram example:
+
+```powershell
+julia --project=. src/run_demo.jl
+```
+
+2. Run ADMG commute:
+
+```powershell
+julia --project=. src/run_demo.jl `
+  --diagram examples/admg_models/commute_admg.jl `
+  --queries examples/queries/commute_queries.jl
+```
+
+3. Run ADMG drug:
+
+```powershell
+julia --project=. src/run_demo.jl `
+  --diagram examples/admg_models/drug_admg.jl `
+  --queries examples/queries/drug_queries.jl
+```
+
+4. Run ADMG party:
+
+```powershell
+julia --project=. src/run_demo.jl `
+  --diagram examples/admg_models/party_admg.jl `
+  --queries examples/queries/party_queries.jl
+```
+
+5. Run HEPAR2 conditional:
+
+```powershell
+julia --project=. src/run_demo.jl `
+  --diagram examples/admg_models/hepar2_bn_admg.jl `
+  --queries examples/queries/hepar2_conditional_queries.jl
+```
+
+6. Disable trace files if desired:
+
+```powershell
+julia --project=. src/run_demo.jl --no-trace
+```
+
+7. Run StringDiagram drug:
+
+```powershell
+julia --project=. src/run_demo.jl `
+  --diagram examples/string_diagrams/drug_scm.jl `
+  --queries examples/queries/drug_queries.jl
+```
+
+8. Run StringDiagram party:
+
+```powershell
+julia --project=. src/run_demo.jl `
+  --diagram examples/string_diagrams/party_scm.jl `
+  --queries examples/queries/party_queries.jl
+```
+
+Example assets are separated under:
+- `examples/string_diagrams/`: string diagram definitions
+- `examples/admg_models/`: ADMG model inputs
+- `examples/queries/`: counterfactual query sets
+
+See `examples/README.md` for the file contract used by `src/run_demo.jl`.
+
 ## Counterfactual API (`identify_counterfactual`)
 
 Use `identify_counterfactual` as the single entry point for:

@@ -1746,6 +1746,73 @@ function _maybe_write_trace!(
     return path
 end
 
+function _recover_confounded_from_scm_wd(wd::WiringDiagram)
+    mech_box_by_var = Dict{Symbol,Int}()
+    for b in WD.box_ids(wd)
+        n = box_name(wd, b)
+        n isa Symbol || continue
+        s = String(n)
+        startswith(s, "f_") || continue
+        v = Symbol(replace(s, "f_" => ""))
+        mech_box_by_var[v] = b
+    end
+    isempty(mech_box_by_var) && return nothing
+
+    # Heuristic: rootify() latent roots are R1, R2, ...
+    is_latent_root(v::Symbol) = occursin(r"^R\d+$", String(v))
+
+    directed = Pair{Symbol,Symbol}[]
+    latents = Dict{Symbol,Vector{Symbol}}()
+
+    for (child_var, b) in mech_box_by_var
+        parent_vars = Symbol[]
+        for j in 1:nin(wd, b)
+            for w in in_wires(wd, b, j)
+                pv = port_value(wd, w.source)
+                pv isa Symbol || continue
+                ps = String(pv)
+                startswith(ps, "U") && continue
+                push!(parent_vars, pv)
+            end
+        end
+        for p in unique(parent_vars)
+            p == child_var && continue
+            if is_latent_root(p)
+                kids = get!(latents, p, Symbol[])
+                child_var in kids || push!(kids, child_var)
+            else
+                push!(directed, p => child_var)
+            end
+        end
+    end
+
+    return ConfoundedModel(unique(directed), latents)
+end
+
+function _resolve_base_scm_input(model_or_base, display_var::Set{Symbol})
+    if model_or_base isa WiringDiagram
+        return deepcopy(model_or_base)
+    end
+
+    if @isdefined(to_wiring_diagram) && applicable(to_wiring_diagram, model_or_base)
+        wd = to_wiring_diagram(model_or_base)
+        wd isa WiringDiagram || error("to_wiring_diagram returned non-WiringDiagram input")
+        recovered = _recover_confounded_from_scm_wd(wd)
+        if recovered !== nothing
+            if isempty(display_var)
+                return graph_b_to_scm(recovered)
+            end
+            return graph_b_to_scm(recovered; outputs=display_var)
+        end
+        return wd
+    end
+
+    if isempty(display_var)
+        return graph_b_to_scm(model_or_base)
+    end
+    return graph_b_to_scm(model_or_base; outputs=display_var)
+end
+
 """
 Run the full counterfactual-identification pipeline.
 
@@ -1835,15 +1902,7 @@ function identify_counterfactual(
 
     build_t0 = time_ns()
     try
-        if model_or_base isa WiringDiagram
-            base_scm = deepcopy(model_or_base)
-        else
-            if isempty(display_var)
-                base_scm = graph_b_to_scm(model_or_base)
-            else
-                base_scm = graph_b_to_scm(model_or_base; outputs=display_var)
-            end
-        end
+        base_scm = _resolve_base_scm_input(model_or_base, display_var)
         _maybe_write_trace!(
             trace_paths,
             trace_dir,
