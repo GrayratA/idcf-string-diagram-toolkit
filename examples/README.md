@@ -1,4 +1,4 @@
-# Examples for Reviewers
+# Examples
 
 This folder contains both supported input styles for `identify_counterfactual`:
 
