@@ -29,7 +29,9 @@ This folder contains both supported input styles for `identify_counterfactual`:
   - Imagine a rainy Monday morning: conditions on the road (`W`) are already bad, and you still need to choose how to travel (`T`). That choice affects intermediate route dynamics (`M`, `L`) and ultimately your arrival quality (`Y`), such as delay. This scenario asks a practical "what if" question people care about all the time: under the same morning conditions, how likely is a different commute choice to change the final outcome? It is useful because it helps separate effects driven by background conditions from effects driven by your own decision.
 
 - `drug` (`drug_admg.jl` / `drug_scm.jl` + `drug_queries.jl`)
-  - Think of a patient with baseline risk (`X`) who receives a treatment decision (`D`). That decision changes a biological marker (`Z`), while another health pathway (`W`) also contributes to the final clinical outcome (`Y`). The point is not just to describe what happened, but to ask how the outcome might have changed under an alternative treatment while keeping the patient's observed context fixed. In practice, this turns retrospective observations into a more decision-oriented treatment comparison.
+  - Imagine a patient treated with two drugs. Drug `X` and drug `D` both influence the final symptom `Y`, and `D` also affects an intermediate marker `Z` that doctors can observe. There is another pathway through `W`, so outcome changes are not explained by one variable alone.
+  - You have mixed evidence from different clinical contexts: in one context you want to evaluate what would happen under dose `x` for drug `X`; in another you know the patient actually had dose `x~` for `X` and dose `d` for `D`; in another you know that under dose `d`, marker `Z` was observed as `z`.
+  - The question is: after combining all that evidence, how likely is symptom `Y` under the hypothetical treatment choice? This is useful because it mirrors real decision-making, where doctors combine observed records with "what-if" treatment alternatives instead of relying on a single intervention view.
 
 - `party` (`party_admg.jl` / `party_scm.jl` + `party_queries.jl`)
   - This is the classic Ann-Bob-Carl party story. Ann’s attendance (`A`) influences whether Bob (`B`) and Carl (`C`) go, and the chance of a scuffle (`S`) depends strongly on whether Bob and Carl are both there. In the observed event, Bob did not attend, but the counterfactual asks what would likely have happened if he had gone, while keeping the rest of the situation aligned with the same night. It is a natural "alternate history" question that makes counterfactual reasoning intuitive.
@@ -46,14 +48,14 @@ This folder contains both supported input styles for `identify_counterfactual`:
   - `L`: downstream latent traffic-state/route-state mediator before the final outcome.
   - `Y`: final commute outcome (for example delay, travel time, or utility).
   - `R1`: latent shared disturbance creating unobserved dependence between `T` and `Y` in the ADMG form.
-  - `UW`, `UT`, `UM`, `UL`, `UY`, `UR1`: exogenous noise terms used in the SCM/string-diagram construction.
+
 
 - `drug` variables
-  - `X`: baseline patient/context variable.
-  - `W`: post-baseline intermediate clinical state.
-  - `D`: intervention/treatment assignment.
-  - `Z`: mediator affected by treatment.
-  - `Y`: final clinical outcome.
+  - `X`: dose/intensity variable for drug `X` (appears in both intervention and observed-world constraints).
+  - `D`: dose/intensity variable for drug `D`.
+  - `Z`: intermediate symptom/marker that responds to treatment `D`.
+  - `W`: additional intermediate pathway variable downstream of `X`.
+  - `Y`: target symptom/outcome queried counterfactually.
 
 - `party` variables
   - `A`: indicator for whether Ann goes to the party.
