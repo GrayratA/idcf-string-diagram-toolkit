@@ -1,6 +1,6 @@
 # Counterfactual Identification via String Diagram Surgery
 
-Counterfactual identification prototype based on Julia/Catlab, with runtime comparisons against R `cfid`.
+Counterfactual identification prototype based on Julia/Catlab.
 
 ## Repository Layout
 
