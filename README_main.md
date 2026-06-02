@@ -48,33 +48,25 @@ julia --project=. src/run_demo.jl
 2. Run ADMG commute:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/commute_admg.jl `
-  --queries examples/queries/commute_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/commute_admg.jl --queries examples/queries/commute_queries.jl
 ```
 
 3. Run ADMG drug:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/drug_admg.jl `
-  --queries examples/queries/drug_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/drug_admg.jl --queries examples/queries/drug_queries.jl
 ```
 
 4. Run ADMG party:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/party_admg.jl `
-  --queries examples/queries/party_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/party_admg.jl --queries examples/queries/party_queries.jl
 ```
 
 5. Run HEPAR2 conditional:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/hepar2_bn_admg.jl `
-  --queries examples/queries/hepar2_conditional_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/hepar2_bn_admg.jl --queries examples/queries/hepar2_conditional_queries.jl
 ```
 
 6. Disable trace files if desired:
@@ -86,17 +78,13 @@ julia --project=. src/run_demo.jl --no-trace
 7. Run StringDiagram drug:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/string_diagrams/drug_scm.jl `
-  --queries examples/queries/drug_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/string_diagrams/drug_scm.jl --queries examples/queries/drug_queries.jl
 ```
 
 8. Run StringDiagram party:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/string_diagrams/party_scm.jl `
-  --queries examples/queries/party_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/string_diagrams/party_scm.jl --queries examples/queries/party_queries.jl
 ```
 
 Example assets are separated under:
@@ -104,7 +92,7 @@ Example assets are separated under:
 - `examples/admg_models/`: ADMG model inputs
 - `examples/queries/`: counterfactual query sets
 
-See `examples/README.md` for the file contract used by `src/run_demo.jl`.
+See `examples/README_example.md` for the file contract used by `src/run_demo.jl`.
 
 ## Counterfactual API (`identify_counterfactual`)
 
@@ -183,19 +171,21 @@ Rscript comparisons/runtime/r_cfid_benchmark.R 30 5
 
 For benchmark fields, alignment notes, and structural-test workflow, see:
 
-- `comparisons/runtime/README.md`
+- `comparisons/runtime/README_runtime.md`
 
 ## Structural Scaling Benchmarks
 
 Example:
 
 ```powershell
-julia comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8,16,24,32 `
-  | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_julia_r4w2.txt
+julia comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_julia_r4w2.txt
+```
 
-Rscript comparisons/runtime/structural_tests/scripts/struct_scaling_r.R 4 2 8,16,24,32 `
-  | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_r_r4w2.txt
+```powershell
+Rscript comparisons/runtime/structural_tests/scripts/struct_scaling_r.R 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_r_r4w2.txt
+```
 
+```powershell
 pwsh -File comparisons/runtime/structural_tests/scripts/make_struct_csv.ps1 -Tag r4w2
 ```
 

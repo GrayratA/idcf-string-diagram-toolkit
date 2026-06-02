@@ -47,14 +47,17 @@ Structural-scaling and profiling artifacts are under:
 Example usage:
 
 ```powershell
-julia comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8,16,24,32 `
-  | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_julia_r4w2.txt
+julia comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_julia_r4w2.txt
+```
 
-Rscript comparisons/runtime/structural_tests/scripts/struct_scaling_r.R 4 2 8,16,24,32 `
-  | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_r_r4w2.txt
+```powershell
+Rscript comparisons/runtime/structural_tests/scripts/struct_scaling_r.R 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_r_r4w2.txt
+```
 
-python comparisons/runtime/structural_tests/scripts/struct_scaling_y0.py 4 2 8,16,24,32 `
-  | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_y0_r4w2.txt
+```powershell
+python comparisons/runtime/structural_tests/scripts/struct_scaling_y0.py 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_y0_r4w2.txt
+```
 
+```powershell
 pwsh -File comparisons/runtime/structural_tests/scripts/make_struct_csv.ps1 -Tag r4w2
 ```

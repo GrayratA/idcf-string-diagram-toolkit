@@ -94,33 +94,25 @@ julia --project=. src/run_demo.jl
 ADMG commute:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/commute_admg.jl `
-  --queries examples/queries/commute_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/commute_admg.jl --queries examples/queries/commute_queries.jl
 ```
 
 ADMG drug:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/drug_admg.jl `
-  --queries examples/queries/drug_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/drug_admg.jl --queries examples/queries/drug_queries.jl
 ```
 
 ADMG party:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/party_admg.jl `
-  --queries examples/queries/party_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/party_admg.jl --queries examples/queries/party_queries.jl
 ```
 
 HEPAR2:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/admg_models/hepar2_bn_admg.jl `
-  --queries examples/queries/hepar2_conditional_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/admg_models/hepar2_bn_admg.jl --queries examples/queries/hepar2_conditional_queries.jl
 ```
 
 Disable trace export:
@@ -132,15 +124,11 @@ julia --project=. src/run_demo.jl --no-trace
 StringDiagram drug:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/string_diagrams/drug_scm.jl `
-  --queries examples/queries/drug_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/string_diagrams/drug_scm.jl --queries examples/queries/drug_queries.jl
 ```
 
 StringDiagram party:
 
 ```powershell
-julia --project=. src/run_demo.jl `
-  --diagram examples/string_diagrams/party_scm.jl `
-  --queries examples/queries/party_queries.jl
+julia --project=. src/run_demo.jl --diagram examples/string_diagrams/party_scm.jl --queries examples/queries/party_queries.jl
 ```
