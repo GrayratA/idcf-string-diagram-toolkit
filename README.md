@@ -1,4 +1,4 @@
-# FYP Counterfactual
+# README Main
 
 Counterfactual identification prototype based on Julia/Catlab, with runtime comparisons against R `cfid`.
 
@@ -92,7 +92,7 @@ Example assets are separated under:
 - `examples/admg_models/`: ADMG model inputs
 - `examples/queries/`: counterfactual query sets
 
-See `examples/README_example.md` for the file contract used by `src/run_demo.jl`.
+See `examples/README.md` for the file contract used by `src/run_demo.jl`.
 
 ## Counterfactual API (`identify_counterfactual`)
 
@@ -171,7 +171,7 @@ Rscript comparisons/runtime/r_cfid_benchmark.R 30 5
 
 For benchmark fields, alignment notes, and structural-test workflow, see:
 
-- `comparisons/runtime/README_runtime.md`
+- `comparisons/runtime/README.md`
 
 ## Structural Scaling Benchmarks
 
