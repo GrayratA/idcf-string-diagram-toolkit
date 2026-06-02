@@ -69,7 +69,7 @@ function run_case(model::ADMGModel, treat::Symbol, out::Symbol)
     q_real = CounterfactualQuery(
         :Real,
         Dict{Symbol, Symbol}(),
-        Dict(treat => :tp),
+        Dict(treat => :t),
         Symbol[],
     )
     q_cf = CounterfactualQuery(
@@ -95,6 +95,7 @@ function run_case(model::ADMGModel, treat::Symbol, out::Symbol)
     step5_ms = 0.0
     try
         step4_t0 = time_ns()
+        id_cf_step3_check!(wd)
         id_cf_step4!(wd, display_var; verbose=false)
         step4_ms = (time_ns() - step4_t0) / 1e6
 
@@ -126,6 +127,30 @@ function run_case(model::ADMGModel, treat::Symbol, out::Symbol)
         total_ms = total_ms,
         result = result,
     )
+end
+
+function identifiable_case(model::ADMGModel, treat::Symbol, out::Symbol)
+    q_real = CounterfactualQuery(
+        :Real,
+        Dict{Symbol, Symbol}(),
+        Dict(treat => :t),
+        Symbol[],
+    )
+    q_cf = CounterfactualQuery(
+        :CF,
+        Dict(treat => :t),
+        Dict{Symbol, Symbol}(),
+        [out],
+    )
+    res = identify_counterfactual(
+        model,
+        [q_real, q_cf];
+        display_syms=[treat, out],
+        output_vars=[string(out)],
+        data=Step5DataConfig(mode=:none, anchor_var=string(treat)),
+        trace_dir=nothing,
+    )
+    return res.identifiable
 end
 
 function benchmark_case(f::Function; repeats::Int, warmups::Int)
@@ -162,11 +187,13 @@ function run_family(family::String, n::Int; repeats::Int, warmups::Int)
         family == "chain_bi" ? model_chain_bi(n) :
         error("unknown family")
 
+    # Keep identifiability status semantics aligned across implementations.
+    id_ok = identifiable_case(model, treat, out)
     stats = benchmark_case(() -> run_case(model, treat, out); repeats=repeats, warmups=warmups)
     w = stats.warm
     println(
         "impl=julia_struct family=$(family) n=$(n) " *
-        "ok=$(stats.last.ok) " *
+        "ok=$(id_ok) " *
         "warm_total_median_ms=$(round(w[:total_ms].median_ms, digits=3)) " *
         "warm_setup_median_ms=$(round(w[:setup_ms].median_ms, digits=3)) " *
         "warm_build_median_ms=$(round(w[:build_ms].median_ms, digits=3)) " *

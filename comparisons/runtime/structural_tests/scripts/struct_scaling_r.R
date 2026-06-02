@@ -85,6 +85,9 @@ run_case <- function(edge_str, treat, out) {
       list(id = FALSE, formula = NULL, error = conditionMessage(e))
     }
   )
+  if (ok) {
+    ok <- isTRUE(res$id)
+  }
   identify_ms <- now_ms() - ident_t0
 
   total_ms <- now_ms() - total_t0

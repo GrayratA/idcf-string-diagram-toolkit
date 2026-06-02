@@ -1,0 +1,94 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{geometry}
+\geometry{a4paper,margin=2.5cm}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\linespread{1.25}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+\setlist[itemize]{leftmargin=2em}
+
+\begin{document}
+
+% ==========================
+%   TITLE PAGE
+% ==========================
+\begin{center}
+    \vspace*{1cm}
+    {\LARGE \textbf{UCL Final Year Project interim report}}\\[1.5em]
+    {\Large \textbf{Project Title:}}\\[0.5em]
+    {\large Categorical Implementation of Counterfactual Identification Algorithms in String Diagrams}\\[2em]
+    \begin{tabular}{rl}
+        
+        \textbf{Supervisor:} & Prof.\ Fabio Zanasi \\
+        \textbf{External Supervisor:} & N/A \\
+        \textbf{Degree Programme:} & MEng Computer Science \\
+        \textbf{Date:} & Jan 2026 \\
+    \end{tabular}
+\end{center}
+
+
+\newpage
+\section{Introduction}
+
+Counterfactual reasoning is a fundamental component of causal inference, enabling the evaluation of hypothetical scenarios such as how outcomes would change under alternative 
+interventions. 
+While Structural Causal Models (SCMs) provide a well-established semantic foundation for 
+counterfactuals, determining whether a counterfactual query is identifiable from observed 
+and interventional data remains a non-trivial algorithmic problem, especially in the 
+presence of latent confounding.
+
+Recent work by Robin Lorenz and Sean Tull(\cite{lorenz2023causal}) introduced a compositional and diagrammatic 
+approach to counterfactual identification based on Acyclic Directed Mixed Graphs (ADMGs)
+and rooted wiring diagrams. 
+Their \textit{id-cf} algorithm offers a complete procedure for identifying general 
+counterfactual queries by decomposing causal graphs into independent fragments and 
+systematically rewriting them into probability expressions. 
+However, the original work focuses on theoretical development and does not provide a 
+fully executable implementation.
+
+This project aims to implement an end-to-end realisation of the \textit{id-cf} algorithm. 
+Given an ADMG and a multi-world counterfactual query, the system automatically constructs 
+a categorical wiring diagram, applies diagrammatic simplification and fragment-based 
+rewriting, and ultimately produces an explicit sum--product probability expression when 
+the query is identifiable. 
+The implementation is carried out in Julia using the Catlab framework, with a focus on 
+compositionality, modularity, and faithful alignment with the theoretical semantics.
+
+
+\section{Current process summary}
+So far, my project has achieved substantial progress across all core technical components. The first major milestone completed was the development of a generalisation and compilation framework for arbitrary acyclic directed mixed graphs (ADMGs). Users can now input any ADMG together with a specification of counterfactual worlds, interventions, or conditioning operations. The system automatically compiles this abstract causal structure into a corresponding rootified wiring diagram expressed in Catlab.jl. This required implementing a systematic translation from mixed-graph structure to category-theoretic primitives, including mechanism boxes, bidirected confounding via root nodes, and world-indexed variable instantiations. As a result, the entire pipeline is now independent of fixed examples and works uniformly for any valid ADMG.
+
+Building on the compiled diagrams, I then completed the full implementation of the \textit{simplify-cf} algorithm, which rewrites counterfactual diagrams into a normalised and canonical form. This involved encoding graphical identities such as propagation of sharp states/effects, elimination of redundant structure, handling of parallel-world models, and composition of mechanisms according to the categorical semantics. The module has been thoroughly tested on non-trivial counterfactual examples from the literature and produces diagrams that exactly match the theoretical expectations. This component forms the foundation for the subsequent identification procedure.
+
+The most technically demanding part of the project has been the  implementation of the \textit{id-cf} counterfactual identification algorithm, particularly its case-based rewrites within each R-fragment. For every variable $X$, the system determines whether the mechanism $c_X$ lies inside the fragment (\textbf{Case 1}) or outside (\textbf{Case 2}), and then performs the exact structural rewrite prescribed by the algorithm. In \textbf{Case 1a}, where the output of $c_X$ connects only to external fragments or final outputs and no additional $X$-type inputs exist inside the fragment, no modification is required; in \textbf{Case 1b}, where the output wire of $c_X$ is composed with some sharp effect x and any other wires of type X inside the fragment all have the state x fed into them, the diagram must be rewritten so that all internal uses of $X$ are consistently supplied by the local $c_X$, following the rules in report. In \textbf{Case 2a}, all $X$-inputs originate from a single external $c_X$ via fan-out, which again requires no rewrite; whereas in \textbf{Case 2b}, all $X$-inputs come from the same sharp state (e.g.\ $\mathrm{do}(X)$), and the fragment must be rewritten by merging these state inputs into a single source, following the rules in report. After all variables have passed their Case analysis and the appropriate rewrites are applied, replaces the entire R-fragment with a probability box 
+\[
+P(C_l, F^{\mathrm{out}}_l;\ \mathrm{do}(D_l),\ \mathrm{do}(F^{\mathrm{in}}_l)),
+\]
+where the sets $C_l$, $F^{\mathrm{out}}_l$, $D_l$ and $F^{\mathrm{in}}_l$ are automatically extracted from the diagram. This completes the essential structural transformation required for counterfactual identification and enables the algorithm to map simplified wiring diagrams into fully identified probabilistic expressions.
+
+\section{Remaining work}
+
+\subsection{Completion of the Final Output Stage.}
+The first remaining task is to complete the final stage of the \textit{id-cf} algorithm, namely generating the explicit sum--product probability expression from the final wiring diagram. This requires extracting all fragment-level probability factors of the form 
+\[
+P(C_l, F^{\mathrm{out}}_l \,;\, \mathrm{do}(D_l), \mathrm{do}(F^{\mathrm{in}}_l)),
+\]
+and assembling them into a single symbolic expression that matches the structure specified in the original identification algorithm. Once implemented, this component will produce the complete analytic counterfactual estimand, representing the final output of the entire \textit{id-cf} pipeline and enabling direct mathematical or computational evaluation.
+
+\subsection{Testing and Validation.}
+The second outstanding task is to construct a systematic and comprehensive test suite. This will include ADMGs and counterfactual queries collected from the literature, classic examples used widely across causal inference papers as well as a variety of edge cases and custom synthetic tests. By validating the outputs of both \textit{simplify-cf} and \textit{id-cf} across a broad range of graph structures and counterfactual scenarios, the aim is to ensure the correctness, robustness, and stability of the entire identification pipeline.
+
+\subsection{Comparison with Existing Tools}
+The third task is to conduct a systematic comparison with state-of-the-art counterfactual identification tools, such as the R package \textit{cfid} (implementing the ID*/IDC* algorithms), the Python library Y0, and other causal-identification frameworks. The comparison will cover aspects including: expressive power (e.g.\ support for parallel-world 
+representations), compositionality, generality with respect to ADMGs, and computational performance. Through these criteria, the advantages and limitations of the present project will be identified, and future directions for improvement will become clearer.
+
+\subsection{Development of a Visualisation Component}
+The final planned task is to develop a visualisation module that can present the wiring diagrams, R-fragment decompositions, and intermediate rewrites produced by both \textit{simplify-cf} and \textit{id-cf}. The preferred solution is to integrate the tool with \textit{Chyp}, which provides high-quality string diagram rendering and supports interactive exploration of categorical structures. If full integration with \textit{Chyp} proves technically challenging, alternative approaches based on Catlab's internal visualisation facilities or custom Julia-based diagram rendering will be explored. A visualisation component would significantly enhance interpretability of the algorithm, facilitate debugging, and provide clearer insight into how the identification procedure operates on different fragments and graphical configurations.
+
+
+% \end{document}

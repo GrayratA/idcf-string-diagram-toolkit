@@ -14,6 +14,7 @@ Example usage:
 ```powershell
 julia --project=. comparisons/runtime/julia_benchmark.jl 30 5
 Rscript comparisons/runtime/r_cfid_benchmark.R 30 5
+python comparisons/runtime/python_y0_benchmark.py 30 5
 ```
 
 The current scripts benchmark three examples:
@@ -21,6 +22,13 @@ The current scripts benchmark three examples:
 - `drug`
 - `party`
 - `hepar2_conditional`
+
+`python_y0_benchmark.py` currently benchmarks:
+
+- `drug`
+- `party`
+- `commute`
+- `hepar2_conditional` (via a binary-event mapping of the conditional counterfactual query)
 
 Notes on alignment:
 
@@ -44,6 +52,9 @@ julia comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8
 
 Rscript comparisons/runtime/structural_tests/scripts/struct_scaling_r.R 4 2 8,16,24,32 `
   | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_r_r4w2.txt
+
+python comparisons/runtime/structural_tests/scripts/struct_scaling_y0.py 4 2 8,16,24,32 `
+  | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_y0_r4w2.txt
 
 pwsh -File comparisons/runtime/structural_tests/scripts/make_struct_csv.ps1 -Tag r4w2
 ```

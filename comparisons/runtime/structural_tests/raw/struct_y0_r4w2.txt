@@ -1,0 +1,17 @@
+impl=python_y0_struct benchmark_config repeats=4 warmups=2 timer=perf_counter_ns
+impl=python_y0_struct family=chain n=8 ok=True warm_total_median_ms=15.928 warm_setup_median_ms=0.008 warm_identify_median_ms=15.905
+impl=python_y0_struct family=chain n=16 ok=True warm_total_median_ms=80.349 warm_setup_median_ms=0.008 warm_identify_median_ms=80.332
+impl=python_y0_struct family=chain n=24 ok=True warm_total_median_ms=281.540 warm_setup_median_ms=0.010 warm_identify_median_ms=281.521
+impl=python_y0_struct family=chain n=32 ok=True warm_total_median_ms=540.636 warm_setup_median_ms=0.008 warm_identify_median_ms=540.622
+impl=python_y0_struct family=fanin n=8 ok=True warm_total_median_ms=13.443 warm_setup_median_ms=0.008 warm_identify_median_ms=13.432
+impl=python_y0_struct family=fanin n=16 ok=True warm_total_median_ms=50.912 warm_setup_median_ms=0.008 warm_identify_median_ms=50.898
+impl=python_y0_struct family=fanin n=24 ok=True warm_total_median_ms=107.398 warm_setup_median_ms=0.008 warm_identify_median_ms=107.384
+impl=python_y0_struct family=fanin n=32 ok=True warm_total_median_ms=199.769 warm_setup_median_ms=0.008 warm_identify_median_ms=199.754
+impl=python_y0_struct family=dense n=8 ok=True warm_total_median_ms=15.750 warm_setup_median_ms=0.007 warm_identify_median_ms=15.738
+impl=python_y0_struct family=dense n=16 ok=True warm_total_median_ms=79.850 warm_setup_median_ms=0.008 warm_identify_median_ms=79.836
+impl=python_y0_struct family=dense n=24 ok=True warm_total_median_ms=229.724 warm_setup_median_ms=0.009 warm_identify_median_ms=229.706
+impl=python_y0_struct family=dense n=32 ok=True warm_total_median_ms=474.462 warm_setup_median_ms=0.009 warm_identify_median_ms=474.447
+impl=python_y0_struct family=chain_bi n=8 ok=True warm_total_median_ms=4.332 warm_setup_median_ms=0.007 warm_identify_median_ms=4.324
+impl=python_y0_struct family=chain_bi n=16 ok=True warm_total_median_ms=8.721 warm_setup_median_ms=0.007 warm_identify_median_ms=8.686
+impl=python_y0_struct family=chain_bi n=24 ok=True warm_total_median_ms=12.873 warm_setup_median_ms=0.008 warm_identify_median_ms=12.862
+impl=python_y0_struct family=chain_bi n=32 ok=True warm_total_median_ms=17.894 warm_setup_median_ms=0.008 warm_identify_median_ms=17.876
