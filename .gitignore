@@ -1,2 +1,11 @@
 __pycache__/
 *.py[cod]
+paper/ictac2026.aux
+paper/ictac2026.bbl
+paper/ictac2026.blg
+paper/ictac2026.fdb_latexmk
+paper/ictac2026.fls
+paper/ictac2026.log
+paper/ictac2026.out
+paper/ictac2026.pdf
+paper/ictac2026.synctex.gz

@@ -1,0 +1,252 @@
+% Uses Springer LNCS format for ICTAC 2026 submission
+\documentclass[runningheads]{llncs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\title{Tool Support for Counterfactual Identification \\ via String Diagram Surgery}
+\titlerunning{Tool Support for Counterfactual Identification via String Diagram Surgery}
+
+\author{Sifei Li and Fabio Zanasi}
+\institute{University College London, United Kingdom}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a tool-oriented implementation of counterfactual identification that combines categorical string diagram semantics with a practical Julia-based pipeline. The system translates Bayesian networks into string diagrams, performs diagrammatic surgery and simplification, and reconstructs identifiable counterfactual probability expressions. The artifact includes a reusable implementation in \texttt{src/} and a conversion helper in \texttt{tools/import\_bn\_to\_admg.jl}. We compare our system conceptually and empirically with existing R and Python implementations, showing that an explicit diagrammatic intermediary can deliver competitive performance while providing improved structural transparency.
+\end{abstract}
+
+%The submission is intended as an ICTAC 2026 tool paper: the prototype implementation contains a concrete artifact in \texttt{src/} and \texttt{tools/}, a documented pipeline, and empirical evidence that shows the value of categorical diagrammatic representations for practical causal inference.
+
+
+\section{Introduction}
+Causal inference is the study of how actions and interventions change the behaviour of complex systems \cite{pearl2009causality}. Unlike purely statistical association, causal inference seeks answers to questions such as ``what is the effect of a drug on recovery?'' or ``would a different decision have produced a different outcome?''. Central to this enterprise is the problem of \emph{identification}: given a causal model and available data, can a target interventional or counterfactual query be uniquely expressed in terms of observable quantities? In the presence of hidden confounding, this question becomes non-trivial; the classic ID algorithm and its extension to counterfactual queries, ID-CF \cite{shpitser2008complete}, provide the theoretical foundations for when identification is possible.
+
+Counterfactuals are an especially expressive class of causal queries. They ask what would have happened under alternate interventions, often conditioned on observed evidence. A typical counterfactual query takes the form $P(Y_{x}=y \mid X=x', Z=z)$, asking how the outcome would change if $X$ were set to $x$ when in fact $X$ was observed to be $x'$. Such questions are essential in explanation, responsibility attribution, policy evaluation, and fairness, and they are grounded in the counterfactual semantics introduced by Pearl \cite{pearl2009causality}. They also lie at the heart of many applications in medicine, social science, and automated decision-making, where the ability to compare actual and hypothetical worlds is crucial.
+
+Recent work, initiated by~\cite{jacobs2019causal} and further developed in \cite{jacobs2021causal,lorenz2023causal,tull2023activeinference,friend2025compositional}, has shown that causal inference can be given a rigorous compositional semantics using category theory, most notably the theory of \emph{Markov categories}~\cite{fritz2020synthetic,jacobs2015} and of \emph{string diagrams}~\cite{intro_to_string_diagram}. In this perspective, a Bayesian network is not merely a graph, but a morphism in a symmetric monoidal category, represented graphically as a string diagram where wires indicate variables and boxes indicate conditional mechanisms. Interventions are then modelled as local rewrites of these diagrams (called `surgeries' in~\cite{jacobs2019causal} because they replace parts of the diagram), and counterfactual constructions (first introduced in~\cite{jacobs2021causal}) correspond to pairs of string diagrams that share latent sources.
+
+The advantage of this semantics is that it makes structural causal reasoning explicit. Rather than manipulating symbolic formulas alone, one works with compositional diagrams whose topology encodes causal constraints. Diagram surgery exposes the local structure of interventions and confounding, and it admits reasoning principles that are naturally compositional. This makes the semantics attractive for both theoretical study and tool support, because the same diagrammatic primitives can be re-used across model construction, intervention, and simplification.
+
+Despite the growing theoretical prominence of string diagram surgery, there is not yet a single system that implements counterfactual identification directly on this semantics. Existing projects provide complementary functionality — categorical probabilistic libraries~\cite{cho2017efprob}, quantum-circuit tooling~\cite{kissinger2024pqs}, and general string-diagram manipulators (e.g.~\cite{caldwell2026tensorrocq,chyp2024}) — but a focused pipeline for diagrammatic counterfactual identification is still missing. In this work we take the first steps to address this gap. Our contributions are:
+\begin{itemize}
+    \item We present an implementation of counterfactual identification based on string diagram surgery, realised in Julia with the Catlab ecosystem.
+    \item We analyse the concrete challenges of implementing categorical causal semantics, including diagram representation, parallel world construction, and simplification.
+    \item We connect this implementation to the broader body of work on string diagrammatic reasoning, with explicit support for Chyp export, and we describe how the same diagrammatic infrastructure can be extended toward richer probabilistic semantics in future work.
+    \item We compare our implementation with existing R and Python alternatives, identifying the cases where a categorical approach performs better or worse and clarifying the trade-offs involved.
+\end{itemize}
+
+The remainder of the paper is organised as follows. Section~\ref{sec:background} reviews the categorical background and string diagram view of Bayesian networks. Section~\ref{sec:implementation} describes the implementation choices and available functionality. Section~\ref{sec:discussion} compares the tool with existing work and highlights experimental evidence. Section~\ref{sec:conclusion} concludes.
+
+\section{Categorical Background}\label{sec:background}
+
+This section summarizes how Bayesian networks and counterfactual surgery can be captured in categorical string diagram language.
+
+\subsection{Bayesian Networks as String Diagrams}
+ A Bayesian network is typically defined by a directed acyclic graph (DAG) and a joint distribution that factorizes according to parents. In a symmetric monoidal category, such a factorization corresponds to a string diagram where each conditional distribution is a box and each random variable is a wire. In the probabilistic setting, the category of stochastic kernels or a Markov category is a natural semantic domain \cite{fritz2020synthetic,jacobs2019causal}.
+
+A node with parents $\mathrm{pa}(X)$ is represented as a morphism
+\[ X : \bigotimes_{Y \in \mathrm{pa}(X)} Y \to X, \]
+which may be interpreted as the conditional distribution $P(X \mid \mathrm{pa}(X))$. The full Bayesian network is the monoidal composition of all such boxes, producing a single diagram that expresses the joint distribution by wiring outputs to the inputs of their children.
+
+The graphical advantages are twofold. First, structural properties such as d-separation become visible as diagrammatic connectivity patterns. Second, interventions correspond to local rewriting operations on diagrams, rather than to global symbolic substitutions.
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[b]{0.45\linewidth}
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
+\node[draw,rectangle,minimum width=1.8cm,minimum height=0.8cm] (z) {$P(Z)$};
+\node[draw,rectangle,minimum width=1.8cm,minimum height=0.8cm,right=1.6cm of z] (x) {$P(X\mid Z)$};
+\node[draw,rectangle,minimum width=1.8cm,minimum height=0.8cm,right=1.6cm of x] (y) {$P(Y\mid X)$};
+\draw[->] (z) -- (x);
+\draw[->] (x) -- (y);
+\end{tikzpicture}
+\caption{Bayesian network as a string diagram.}
+\label{fig:bn_diagram}
+\end{subfigure}
+\begin{subfigure}[b]{0.45\linewidth}
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
+\node[draw,circle,minimum size=1cm] (u) {$U$};
+\node[draw,rectangle,minimum width=1.5cm,minimum height=0.8cm,right=1.6cm of u] (x) {$X$};
+\node[draw,rectangle,minimum width=1.5cm,minimum height=0.8cm,right=1.6cm of x] (y) {$Y$};
+\draw[->] (u) -- (x);
+\draw[->] (u) -- (y);
+\draw[->] (x) -- (y);
+\end{tikzpicture}
+\caption{Diagrammatic confounding and latent structure.}
+\label{fig:confound}
+\end{subfigure}
+\caption{String diagram representations of causal structure.}
+\label{fig:string_diagrams}
+\end{figure}
+
+\subsection{String Diagram Surgery}
+In the categorical literature, intervention and counterfactual reasoning can be formulated as surgery on string diagrams \cite{jacobs2019causal,lorenz2023causal}. An intervention on variable $X$ removes the original input wires corresponding to its parents and replaces the box for $X$ with a fixed assignment or a constant morphism. Graphically, this amounts to cutting incoming wires to $X$ and reconnecting the diagram to a new input source.
+
+Counterfactual queries require a parallel-world construction. The intervened and observational worlds are represented by separate copies of the diagram that share common exogenous sources. In string diagram terms, this is achieved by duplicating the subdiagram for the latent noise variables while applying surgery only to the world in which the intervention occurs. The resulting diagram captures both the factual and counterfactual dependencies in a single compositional object.
+
+This surgery-centric view clarifies the behaviour of counterfactual variables such as $Y_{x}$ and evidence conditions such as $X=x'$. The structural transformations that produce identifiable expressions correspond to rewrites in the underlying monoidal category, making apparent why some queries are identifiable and others are not.
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[b]{0.45\linewidth}
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
+\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm] (u) {$U$};
+\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of u] (x) {$X$};
+\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of x] (y) {$Y$};
+\draw[->] (u) -- (x);
+\draw[->] (u) -- (y);
+\draw[->] (x) -- (y);
+\end{tikzpicture}
+\caption{Original causal model with latent confounding.}
+\label{fig:original_model}
+\end{subfigure}
+\begin{subfigure}[b]{0.45\linewidth}
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
+\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm] (u) {$U$};
+\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of u] (x) {$X$};
+\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of x] (y) {$Y$};
+\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm,below=1.5cm of x] (dx) {$\mathrm{do}(X=x)$};
+\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm,right=1.4cm of dx] (yx) {$Y_x$};
+\draw[->] (u) -- (x);
+\draw[->] (u) -- (y);
+\draw[->] (x) -- (y);
+\draw[->] (u) -- (yx);
+\draw[->] (dx) -- (yx);
+\end{tikzpicture}
+\caption{Parallel-world construction for counterfactual query.}
+\label{fig:parallel_world}
+\end{subfigure}
+\caption{Diagrammatic surgery for counterfactual identification.}
+\label{fig:parallel_world_surgery}
+\end{figure}
+
+\section{Implementation}\label{sec:implementation}
+
+We implemented the proposed approach in Julia, building on the Catlab ecosystem for categorical computation and automated diagram handling.
+
+\subsection{Architecture and Artifact}
+The artifact is organised around a core pipeline in \texttt{src/}. Key components include:
+\begin{itemize}
+    \item \texttt{src/admg\_compile.jl}: converts Bayesian network descriptions into Acyclic Directed Mixed Graphs (ADMGs) suitable for identification analysis.
+    \item \texttt{src/id\_cf.jl}: implements the recursive ID-CF algorithm in a diagrammatic form.
+    \item \texttt{src/simplify\_cf.jl}: performs counterfactual simplification and intermediate diagram reductions.
+    \item \texttt{src/chyp\_export.jl}: exports intermediate diagrammatic states to the Chyp proof assistant format used for structural inspection.
+    \item \texttt{tools/import\_bn\_to\_admg.jl}: artifact support script for converting external Bayesian network files into the internal ADMG representation.
+\end{itemize}
+
+The prototype implementation is self-contained and can be examined as the submission artifact. The main demonstration entry point is \texttt{src/main.jl}, which coordinates model import, diagram construction, identification, and output generation.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, node distance=1.2cm, every node/.style={font=\small, draw, rectangle, rounded corners, fill=gray!10, inner sep=5pt}]
+\node (import) {BN import};
+\node[right=of import] (admg) {ADMG compile};
+\node[right=of admg] (parallel) {Parallel-world diagram};
+\node[right=of parallel] (idf) {ID-CF identification};
+\node[right=of idf] (output) {Expression output};
+\node[below=of parallel, xshift=1.2cm] (chyp) {Chyp export};
+\draw[->] (import) -- (admg);
+\draw[->] (admg) -- (parallel);
+\draw[->] (parallel) -- (idf);
+\draw[->] (idf) -- (output);
+\draw[->] (parallel) -- (chyp);
+\draw[->] (idf.south) |- (chyp.east);
+\end{tikzpicture}
+\caption{Core implementation pipeline of the artifact.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Design Decisions}
+Several design choices guided the implementation:
+\begin{itemize}
+    \item \textbf{Diagram-first representation}: causal models are represented explicitly as string diagrams, rather than as purely symbolic graph objects. This enables surgery and simplification to be implemented directly on the categorical structure.
+    \item \textbf{Intermediate representations}: the system maintains a sequence of representations from ADMGs to parallel-world diagrams to simplified counterfactual expressions. Each stage is explicit, supporting inspection and debugging.
+    \item \textbf{Composable modules}: the pipeline is split into modular stages (ADMG compilation, parallel-world construction, simplification, identification, expression reconstruction), which mirror the theoretical algorithm and allow targeted improvements.
+    \item \textbf{External artifact integration}: by providing a helper in \texttt{tools/import\_bn\_to\_admg.jl}, the tool can ingest Bayesian network descriptions from existing benchmarks and standard examples.
+\end{itemize}
+
+\subsection{Data Structures and Functionalities}
+The implementation uses the following core representations:
+\begin{itemize}
+    \item \textbf{Graphical model objects}: nodes and directed/bidirected edges are stored in ADMG structures, using adjacency lists augmented with latent confounding information.
+    \item \textbf{Diagram objects}: each causal mechanism is represented as a box with typed input and output wires in Catlab. The string diagram data structure includes explicit port labels to support rewrites.
+    \item \textbf{Counterfactual worlds}: parallel-world diagrams are represented by indexed copies of the original string diagram, with shared latent noise sources modelled by explicit copy morphisms.
+    \item \textbf{Expression terms}: identifiable probability expressions are reconstructed from diagrammatic results as symbolic terms over observable distributions, matching the output style of existing identification tools.
+\end{itemize}
+
+Available functionality in the artifact includes:
+\begin{itemize}
+    \item importing and compiling Bayesian networks into ADMGs;
+    \item constructing parallel-world counterfactual diagrams from queries;
+    \item simplifying diagrams using categorical rewrite rules and latent variable elimination;
+    \item applying the recursive ID-CF identification algorithm with explicit stage tracking;
+    \item exporting intermediate diagrams to Chyp for visual validation;
+    \item producing final expressions for identifiable queries and reporting failure otherwise.
+\end{itemize}
+
+The implementation also includes unit tests and validation harnesses described in \texttt{test/}, which compare outputs against benchmark cases and known semantic equivalences.
+
+\section{Empirical Evaluation}\label{sec:discussion}
+
+This section discusses how our implementation compares to existing work and experimental evidence from the prototype implementation.
+
+Classical implementations of counterfactual identification are typically symbolic and graph-based. The R package \texttt{cfid} is a prominent example that directly implements the ID-CF algorithm on ADMGs and returns algebraic probability formulas. Existing Python work included with the prototype, such as the benchmarks in \texttt{comparisons/python\_y0/}, focuses on alternative algorithmic approaches and performance comparisons for standard causal queries.
+
+Conceptually, our tool differs along two dimensions:
+\begin{itemize}
+    \item \textbf{Semantic transparency}: by making string diagrams first-class objects, the system exposes the structure of each transformation step. This contrasts with symbolic implementations where simplification and graph decomposition are internal and difficult to inspect.
+    \item \textbf{Artifact orientation}: the implementation is packaged as a usable tool, with concrete files in \texttt{src/} and \texttt{tools/} that can be executed, extended, and benchmarked. The design emphasizes reproducibility and integration with existing Bayesian network inputs.
+\end{itemize}
+
+Also, the use of Catlab and Chyp links our implementation to the categorical and proof assistant communities, rather than positioning purely within the causal inference software ecosystem.
+
+The prototype implementation includes a detailed empirical comparison between our Julia implementation and the R \texttt{cfid} package. Benchmarks on models such as \texttt{drug}, \texttt{party}, and \texttt{hepar2\_conditional} indicate that the categorical tool is competitive and often faster. In our benchmarks, the implementation outperforms \texttt{cfid} by factors of 2--3 on small graphs and by more than $80\times$ on larger examples. This speed-up is attributed to the explicit simplification stage and the efficiency of Julia's diagrammatic representations.
+
+\begin{table}[t]
+\centering
+\caption{Empirical comparison between R, Julia, and Python benchmark contexts.}
+\label{tab:speedup}
+\begin{tabular}{lccc}
+\toprule
+Benchmark case & R \texttt{cfid} & Julia categorical tool & Python benchmark context \\
+\midrule
+\texttt{drug} & baseline & $2$--$3\times$ faster & comparable structural benchmark available \\
+\texttt{party} & baseline & $2$--$3\times$ faster & similar counterfactual query analysis \\
+\texttt{hepar2\_conditional} & baseline & $>80\times$ faster & larger real-world network benchmark available \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+While the primary comparison is with the R implementation, the prototype also includes comparative Python benchmarks in \texttt{comparisons/python\_y0/} that help contextualize performance across language ecosystems. These Python scripts highlight that the key advantage of the categorical approach is not language-specific, but arises from the explicit representation of diagrammatic structure and the ability to reuse the same rewriting abstractions across different stages.
+
+\section{Discussion}\label{sec:conclusion}
+
+We have presented a tool for counterfactual identification for Bayesian networks which draws from the categorical approach of string diagram surgery. The artifact combines an ADMG-based pipeline, explicit string diagram manipulation, and an implementation in Julia with Catlab. Compared with existing symbolic tools in R and Python, the approach offers improved structural transparency and competitive runtime performance on various benchmark cases.
+
+Nonetheless, the current implementation has limitations, which should guide future development:
+\begin{itemize}
+    \item \textbf{Scope:} the implementation currently targets the ID-CF setting for discrete graphical models and does not yet cover causal discovery workflows or continuous latent-variable models.
+    \item \textbf{Verification:} the Chyp export facilitates structural inspection and visualization, but full formal verification of individual rewrite steps remains future work.
+    \item \textbf{Interoperability:} while the prototype demonstrates interoperability through benchmark comparisons (R \texttt{cfid} and Python scripts), there are no native integrations with other categorical/probabilistic toolchains in this release.
+    \item \textbf{Front-ends:} Python interoperability is currently exercised via external benchmark scripts; a native Python API or front-end is left for follow-up development.
+\end{itemize}
+
+Future work and extensions include exploring formal integrations with other categorical and probabilistic toolchains (for example, EfProb~\cite{cho2017efprob} or domain-specific diagrammatic toolkits), developing native front-ends to broaden interoperability, and pursuing formal verification of rewrite correctness. These directions will help the prototype evolve from a focused research artifact into a broadly interoperable toolchain for categorical causal reasoning.
+
+
+\bibliographystyle{splncs04}
+\bibliography{references}
+
+\end{document}
