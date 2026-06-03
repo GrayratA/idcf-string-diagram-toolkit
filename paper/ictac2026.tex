@@ -10,8 +10,8 @@
 \usepackage{hyperref}
 \usepackage{microtype}
 
-\title{Tool Support for Counterfactual Identification \\ via String Diagram Surgery}
-\titlerunning{Tool Support for Counterfactual Identification via String Diagram Surgery}
+\title{Tool Support for Causal Reasoning \\ via String Diagram Surgery}
+\titlerunning{Tool Support for Causal Reasoning via String Diagram Surgery}
 
 \author{Sifei Li and Fabio Zanasi}
 \institute{University College London, United Kingdom}
@@ -20,7 +20,7 @@
 \maketitle
 
 \begin{abstract}
-We present a tool-oriented implementation of counterfactual identification that combines categorical string diagram semantics with a practical Julia-based pipeline. The system translates Bayesian networks into string diagrams, performs diagrammatic surgery and simplification, and reconstructs identifiable counterfactual probability expressions. The artifact includes a reusable implementation in \texttt{src/} and a conversion helper in \texttt{tools/import\_bn\_to\_admg.jl}. We compare our system conceptually and empirically with existing R and Python implementations, showing that an explicit diagrammatic intermediary can deliver competitive performance while providing improved structural transparency.
+Causal inference and counterfactual reasoning have recently been given a category-theoretic semantics based on string diagrams and their graphical manipulation (``surgery''). Despite these theoretical advances, there is currently no software support for this approach. In this work, we present a prototype implementation in Julia that enables causal and counterfactual queries to be evaluated on probabilistic models represented as string diagrams. This allows us to compare the categorical approach, both conceptually and empirically, with existing implementations in R and Python. In particular, we show that the use of an explicit diagrammatic intermediate representation can achieve competitive performance while offering greater structural transparency and interpretability.
 \end{abstract}
 
 %The submission is intended as an ICTAC 2026 tool paper: the prototype implementation contains a concrete artifact in \texttt{src/} and \texttt{tools/}, a documented pipeline, and empirical evidence that shows the value of categorical diagrammatic representations for practical causal inference.
