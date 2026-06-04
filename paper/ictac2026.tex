@@ -134,116 +134,88 @@ This surgery-centric view clarifies the behaviour of counterfactual variables su
 
 \section{Implementation}\label{sec:implementation}
 
-We implemented the proposed approach in Julia, building on the Catlab ecosystem for categorical computation and automated diagram handling.
+We implemented the approach in Julia on top of the Catlab ecosystem~\cite{catlab}, which provides a computational realisation of symmetric monoidal categories through \emph{wiring diagrams}. The whole computation manipulates a single kind of object: a Catlab \texttt{WiringDiagram} in which boxes are mechanisms (morphisms) and wires are variable dependencies. Each box carries a symbolic name encoding its role---\texttt{f\_X} for a mechanism, \texttt{PU\_X} for an exogenous source, \texttt{do\_X=x} for an intervention (a \emph{sharp state}), \texttt{obs\_X=x} for an observation (a \emph{sharp effect}), \texttt{c\_X} for a deterministic constant mechanism---so that surgery and identification are realised uniformly as rewrites on named boxes and their wiring.
 
-\subsection{Architecture and Artifact}
-The artifact is organised around a core pipeline in \texttt{src/}. Key components include:
-\begin{itemize}
-    \item \texttt{src/admg\_compile.jl}: converts Bayesian network descriptions into Acyclic Directed Mixed Graphs (ADMGs) suitable for identification analysis.
-    \item \texttt{src/id\_cf.jl}: implements the recursive ID-CF algorithm in a diagrammatic form.
-    \item \texttt{src/simplify\_cf.jl}: performs counterfactual simplification and intermediate diagram reductions.
-    \item \texttt{src/chyp\_export.jl}: exports intermediate diagrammatic states to the Chyp proof assistant format used for structural inspection.
-    \item \texttt{tools/import\_bn\_to\_admg.jl}: artifact support script for converting external Bayesian network files into the internal ADMG representation.
-\end{itemize}
-
-The prototype implementation is self-contained and can be examined as the submission artifact. The main demonstration entry point is \texttt{src/main.jl}, which coordinates model import, diagram construction, identification, and output generation.
+\subsection{Pipeline and Artifact}
+Identification is driven by a single entry point, \texttt{identify\_counterfactual} (alias \texttt{run\_cf\_pipeline}) in \texttt{src/id\_cf.jl}, which executes five stages, timing each independently and exporting an intermediate diagram after every stage (Figure~\ref{fig:architecture}):
+\begin{enumerate}
+    \item \textbf{ADMG compilation} (\texttt{src/admg\_compile.jl}). An input Acyclic Directed Mixed Graph (ADMG) is \emph{rootified}---each bidirected edge $X \leftrightarrow Y$ is replaced by a fresh latent root feeding both endpoints---and then compiled by \texttt{graph\_b\_to\_scm} into a base structural diagram with one mechanism box $f_V : (\mathrm{pa}(V), U_V) \to V$ and one exogenous source $PU_V$ per variable.
+    \item \textbf{Parallel-world construction} (\texttt{build\_multiverse}). The base diagram is lifted into a multiverse diagram by duplicating each mechanism box once per world while \emph{sharing} the exogenous source boxes across all worlds---the diagrammatic counterpart of shared exogenous noise. An intervened variable splits into a discarded sink and a fresh \texttt{do\_X=x} source; an observed variable receives an \texttt{obs\_X=x} sharp-effect box.
+    \item \textbf{Simplification} (\texttt{src/simplify\_cf.jl}). Four rewrite passes reduce the diagram to canonical form: pruning discarded branches and dead boxes, separating sharp effects from copy/fan-out, merging deterministic mechanisms with identical input sources, and absorbing exogenous noise by replacing each $f_X$ with a deterministic constant mechanism $c_X$.
+    \item \textbf{ID-CF identification} (Step~4, \texttt{src/id\_cf.jl}). The simplified diagram is decomposed into \emph{R-fragments}---the diagrammatic counterpart of c-components (districts) in ADMGs---and each fragment is rewritten by case analysis into an interventional probability box $P(C_l, F_l^{out} \mid \mathrm{do}(D_l), \mathrm{do}(F_l^{in}))$. A residual unabsorbed exogenous source signals a non-identifiable query.
+    \item \textbf{Expression output} (Step~5, \texttt{id\_cf\_step5}). The resulting probability boxes are parsed into a small expression tree and rendered as a LaTeX formula, with optional algebraic simplification (e.g.\ dropping vacuous interventions and eliminating normalised summations).
+\end{enumerate}
+The remaining modules support this pipeline: \texttt{src/bn\_import.jl} and \texttt{tools/import\_bn\_to\_admg.jl} ingest external Bayesian-network files (\texttt{.bif}/\texttt{.net}) as ADMGs; \texttt{src/chyp\_export.jl} serialises any diagram to the Chyp format~\cite{chyp2024} for inspection; and \texttt{src/utils.jl} provides the shared box predicates and graph utilities (topological ordering, signature matching). The command-line driver \texttt{src/run\_demo.jl} and the worked commute example in \texttt{src/main.jl} exercise the full pipeline.
 
 \begin{figure}[t]
 \centering
-\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, node distance=1.2cm, every node/.style={font=\small, draw, rectangle, rounded corners, fill=gray!10, inner sep=5pt}]
-\node (import) {BN import};
-\node[right=of import] (admg) {ADMG compile};
-\node[right=of admg] (parallel) {Parallel-world diagram};
-\node[right=of parallel] (idf) {ID-CF identification};
-\node[right=of idf] (output) {Expression output};
-\node[below=of parallel, xshift=1.2cm] (chyp) {Chyp export};
-\draw[->] (import) -- (admg);
+\begin{tikzpicture}[>=Stealth, scale=0.7, transform shape, node distance=0.55cm, every node/.style={font=\small, draw, rectangle, rounded corners, fill=gray!10, inner sep=4pt}]
+\node (admg) {ADMG compile};
+\node[right=of admg] (parallel) {Parallel-world};
+\node[right=of parallel] (simp) {Simplify};
+\node[right=of simp] (idf) {ID-CF (Step~4)};
+\node[right=of idf] (output) {Expression (Step~5)};
+\node[below=1cm of simp] (chyp) {Chyp export};
 \draw[->] (admg) -- (parallel);
-\draw[->] (parallel) -- (idf);
+\draw[->] (parallel) -- (simp);
+\draw[->] (simp) -- (idf);
 \draw[->] (idf) -- (output);
-\draw[->] (parallel) -- (chyp);
-\draw[->] (idf.south) |- (chyp.east);
+\draw[->, dashed] (parallel) -- (chyp);
+\draw[->, dashed] (simp) -- (chyp);
+\draw[->, dashed] (idf.south) |- (chyp.east);
 \end{tikzpicture}
-\caption{Core implementation pipeline of the artifact.}
+\caption{Implementation pipeline. Each stage manipulates a single Catlab wiring diagram; a Chyp trace is exported after every stage (dashed).}
 \label{fig:architecture}
 \end{figure}
 
-\subsection{Design Decisions}
-Several design choices guided the implementation:
-\begin{itemize}
-    \item \textbf{Diagram-first representation}: causal models are represented explicitly as string diagrams, rather than as purely symbolic graph objects. This enables surgery and simplification to be implemented directly on the categorical structure.
-    \item \textbf{Intermediate representations}: the system maintains a sequence of representations from ADMGs to parallel-world diagrams to simplified counterfactual expressions. Each stage is explicit, supporting inspection and debugging.
-    \item \textbf{Composable modules}: the pipeline is split into modular stages (ADMG compilation, parallel-world construction, simplification, identification, expression reconstruction), which mirror the theoretical algorithm and allow targeted improvements.
-    \item \textbf{External artifact integration}: by providing a helper in \texttt{tools/import\_bn\_to\_admg.jl}, the tool can ingest Bayesian network descriptions from existing benchmarks and standard examples.
-\end{itemize}
+\subsection{Data Structures and Design Decisions}
+Causal models are described by an \texttt{ADMGModel} (directed and bidirected edge lists), which rootification turns into a \texttt{ConfoundedModel} (directed edges plus a map from each latent root to the variables it confounds). A \texttt{CounterfactualQuery} specifies, per world, the interventions, observations, and output variables. From the simplification stage onwards every state is a Catlab \texttt{WiringDiagram}, and identification proceeds entirely by pattern-matching on box names and rewiring---there is no separate symbolic graph representation. Final expressions are built over a small term language (atomic probability factors, products, sums, and fractions) so that identifiable queries are reported as algebraic formulas matching the output style of existing identification tools, and non-identifiable queries report the stage and box at which absorption failed.
 
-\subsection{Data Structures and Functionalities}
-The implementation uses the following core representations:
-\begin{itemize}
-    \item \textbf{Graphical model objects}: nodes and directed/bidirected edges are stored in ADMG structures, using adjacency lists augmented with latent confounding information.
-    \item \textbf{Diagram objects}: each causal mechanism is represented as a box with typed input and output wires in Catlab. The string diagram data structure includes explicit port labels to support rewrites.
-    \item \textbf{Counterfactual worlds}: parallel-world diagrams are represented by indexed copies of the original string diagram, with shared latent noise sources modelled by explicit copy morphisms.
-    \item \textbf{Expression terms}: identifiable probability expressions are reconstructed from diagrammatic results as symbolic terms over observable distributions, matching the output style of existing identification tools.
-\end{itemize}
-
-Available functionality in the artifact includes:
-\begin{itemize}
-    \item importing and compiling Bayesian networks into ADMGs;
-    \item constructing parallel-world counterfactual diagrams from queries;
-    \item simplifying diagrams using categorical rewrite rules and latent variable elimination;
-    \item applying the recursive ID-CF identification algorithm with explicit stage tracking;
-    \item exporting intermediate diagrams to Chyp for visual validation;
-    \item producing final expressions for identifiable queries and reporting failure otherwise.
-\end{itemize}
-
-The implementation also includes unit tests and validation harnesses described in \texttt{test/}, which compare outputs against benchmark cases and known semantic equivalences.
+Three decisions characterise the design. First, a \textbf{single diagrammatic representation} is used end to end, so surgery, simplification, and identification are all rewrites on the same object rather than transformations between distinct data models. Second, the pipeline keeps \textbf{every intermediate stage explicit} and exports it to Chyp, making each transformation step inspectable---in contrast to symbolic tools where decomposition and simplification are internal. Third, the stages mirror the theoretical algorithm one-to-one, so each can be tested and optimised independently; the test suite in \texttt{test/} covers ADMG compilation, multiverse construction, simplification, R-fragment partitioning, and expression generation as separate module-level test sets.
 
 \section{Empirical Evaluation}\label{sec:discussion}
 
-This section discusses how our implementation compares to existing work and experimental evidence from the prototype implementation.
-
-Classical implementations of counterfactual identification are typically symbolic and graph-based. The R package \texttt{cfid} is a prominent example that directly implements the ID-CF algorithm on ADMGs and returns algebraic probability formulas. Existing Python work included with the prototype, such as the benchmarks in \texttt{comparisons/python\_y0/}, focuses on alternative algorithmic approaches and performance comparisons for standard causal queries.
-
-Conceptually, our tool differs along two dimensions:
-\begin{itemize}
-    \item \textbf{Semantic transparency}: by making string diagrams first-class objects, the system exposes the structure of each transformation step. This contrasts with symbolic implementations where simplification and graph decomposition are internal and difficult to inspect.
-    \item \textbf{Artifact orientation}: the implementation is packaged as a usable tool, with concrete files in \texttt{src/} and \texttt{tools/} that can be executed, extended, and benchmarked. The design emphasizes reproducibility and integration with existing Bayesian network inputs.
-\end{itemize}
-
-Also, the use of Catlab and Chyp links our implementation to the categorical and proof assistant communities, rather than positioning purely within the causal inference software ecosystem.
-
-The prototype implementation includes a detailed empirical comparison between our Julia implementation and the R \texttt{cfid} package. Benchmarks on models such as \texttt{drug}, \texttt{party}, and \texttt{hepar2\_conditional} indicate that the categorical tool is competitive and often faster. In our benchmarks, the implementation outperforms \texttt{cfid} by factors of 2--3 on small graphs and by more than $80\times$ on larger examples. This speed-up is attributed to the explicit simplification stage and the efficiency of Julia's diagrammatic representations.
+We evaluate the prototype against \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs, and against the Python \texttt{y0} library. The benchmark harnesses live in \texttt{comparisons/runtime/} (\texttt{julia\_benchmark.jl}, \texttt{r\_cfid\_benchmark.R}, \texttt{python\_y0\_benchmark.py}); all timings are warm medians over repeated executions on a standard desktop, with the Julia and R measurements aligned so that the Julia identification cost (Step~4 $+$ Step~5) is compared against R's \texttt{identifiable($\cdot$)} call. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges).
 
 \begin{table}[t]
 \centering
-\caption{Empirical comparison between R, Julia, and Python benchmark contexts.}
+\caption{Warm-median runtime against R \texttt{cfid}: standard benchmark queries (top) and synthetic graph families at $n=32$ (bottom). Speedup is R total over Julia total.}
 \label{tab:speedup}
-\begin{tabular}{lccc}
+\begin{tabular}{lrrr}
 \toprule
-Benchmark case & R \texttt{cfid} & Julia categorical tool & Python benchmark context \\
+Case & Julia (ms) & R \texttt{cfid} (ms) & Speedup \\
 \midrule
-\texttt{drug} & baseline & $2$--$3\times$ faster & comparable structural benchmark available \\
-\texttt{party} & baseline & $2$--$3\times$ faster & similar counterfactual query analysis \\
-\texttt{hepar2\_conditional} & baseline & $>80\times$ faster & larger real-world network benchmark available \\
+\texttt{drug}                & $19.85$  & $53.37$    & $2.69\times$ \\
+\texttt{party}               & $10.15$  & $28.31$    & $2.79\times$ \\
+\texttt{hepar2\_conditional} & $90.84$  & $7812.44$  & $86.0\times$ \\
+\midrule
+\texttt{chain} ($n{=}32$)    & $162.44$ & $963.69$   & $5.93\times$ \\
+\texttt{fanin} ($n{=}32$)    & $161.65$ & $891.76$   & $5.52\times$ \\
+\texttt{dense} ($n{=}32$)    & $400.67$ & $1408.74$  & $3.52\times$ \\
+\texttt{chain\_bi} ($n{=}32$)& $603.06$ & $389.40$   & $0.65\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-While the primary comparison is with the R implementation, the prototype also includes comparative Python benchmarks in \texttt{comparisons/python\_y0/} that help contextualize performance across language ecosystems. These Python scripts highlight that the key advantage of the categorical approach is not language-specific, but arises from the explicit representation of diagrammatic structure and the ability to reuse the same rewriting abstractions across different stages.
+On the standard benchmarks (Table~\ref{tab:speedup}, top) the categorical tool is consistently faster than \texttt{cfid}: by roughly $2.7\times$ on the small \texttt{drug} and \texttt{party} queries and by $86\times$ on the larger \texttt{hepar2} network. A stage-level breakdown explains why. The dominant cost in our pipeline is the explicit \emph{simplification} stage (for \texttt{drug}, $16.7$ of $19.85$\,ms), while identification itself (Steps~4--5) is comparatively negligible; \texttt{cfid}, conversely, spends almost all of its time inside \texttt{identifiable}. The categorical method thus trades a heavier but reusable diagram-simplification phase for a very light identification phase, and this trade pays off increasingly as the model grows: on chains the speedup rises monotonically from $1.14\times$ at $n=8$ to $5.93\times$ at $n=32$.
+
+The synthetic families also expose where the trade-off does \emph{not} pay off (Table~\ref{tab:speedup}, bottom). On sparse and moderately dense graphs the categorical tool wins by $3.5$--$6\times$, but on the heavily-confounded \texttt{chain\_bi} family the result reverses: at $n=32$ our tool is only $0.65\times$ as fast (i.e.\ slower), because simplification cost is driven up by bidirected confounding rather than by the identification work that \texttt{cfid} performs. On this family the Python \texttt{y0} library is in fact faster than both. We report this honestly: the categorical approach is competitive-to-faster on sparse and moderately dense models, but its simplification stage currently penalises it on densely confounded graphs.
+
+For correctness we use cross-tool validation. Across all identifiable benchmark queries our tool and \texttt{cfid} return expressions denoting the same interventional/counterfactual distribution (up to ordering and formatting), and both correctly report failure on the non-identifiable queries. Beyond runtime, making string diagrams first-class objects gives the tool a form of \textbf{semantic transparency} absent from symbolic implementations: every transformation step---ADMG compilation, multiverse construction, each simplification pass, and fragment identification---is exported to Chyp and can be inspected, whereas in \texttt{cfid} decomposition and simplification are internal. The use of Catlab and Chyp also connects the implementation to the categorical and diagrammatic-reasoning communities rather than positioning it purely within the causal-inference software ecosystem.
 
 \section{Discussion}\label{sec:conclusion}
 
-We have presented a tool for counterfactual identification for Bayesian networks which draws from the categorical approach of string diagram surgery. The artifact combines an ADMG-based pipeline, explicit string diagram manipulation, and an implementation in Julia with Catlab. Compared with existing symbolic tools in R and Python, the approach offers improved structural transparency and competitive runtime performance on various benchmark cases.
+We have presented a prototype for counterfactual identification on Bayesian networks built directly on the categorical semantics of string-diagram surgery. The artifact realises the full ID-CF pipeline---ADMG compilation, parallel-world construction, diagrammatic simplification, R-fragment identification, and expression output---as rewrites on Catlab wiring diagrams, with a Chyp trace exported at every stage. The evaluation shows this is not merely feasible but competitive: the tool reproduces \texttt{cfid}'s results and is substantially faster on sparse and moderately dense models, at the cost of an explicit simplification phase that becomes the bottleneck on densely confounded graphs.
 
-Nonetheless, the current implementation has limitations, which should guide future development:
+The current implementation has limitations that guide future development:
 \begin{itemize}
-    \item \textbf{Scope:} the implementation currently targets the ID-CF setting for discrete graphical models and does not yet cover causal discovery workflows or continuous latent-variable models.
-    \item \textbf{Verification:} the Chyp export facilitates structural inspection and visualization, but full formal verification of individual rewrite steps remains future work.
-    \item \textbf{Interoperability:} while the prototype demonstrates interoperability through benchmark comparisons (R \texttt{cfid} and Python scripts), there are no native integrations with other categorical/probabilistic toolchains in this release.
-    \item \textbf{Front-ends:} Python interoperability is currently exercised via external benchmark scripts; a native Python API or front-end is left for follow-up development.
+    \item \textbf{Scope:} the tool targets the ID-CF setting for discrete graphical models and does not yet cover causal discovery or continuous latent-variable models. Its validity also rests on the usual causal-model assumptions (causal sufficiency, correct specification of dependencies), and the bidirected-edge abstraction may not capture every hidden dependency.
+    \item \textbf{Structure-dependent performance:} the simplification stage relies on repeated full-graph traversals and dominates runtime; on dense and especially bidirected-confounded graphs (e.g.\ \texttt{chain\_bi}) this preprocessing cost can erase, or reverse, the identification speedup.
+    \item \textbf{Visualisation:} Chyp export aids inspection but supports a limited character set (unsupported symbols are mangled in labels, which is most acute for identification outputs) and does not scale visually to large diagrams.
+    \item \textbf{Verification:} the explicit intermediate diagrams make every rewrite step inspectable, but the steps are not yet formally verified, and there are no native integrations with other categorical/probabilistic toolchains in this release.
 \end{itemize}
 
-Future work and extensions include exploring formal integrations with other categorical and probabilistic toolchains (for example, EfProb~\cite{cho2017efprob} or domain-specific diagrammatic toolkits), developing native front-ends to broaden interoperability, and pursuing formal verification of rewrite correctness. These directions will help the prototype evolve from a focused research artifact into a broadly interoperable toolchain for categorical causal reasoning.
+Future work falls into four directions. First, \textbf{optimising simplification} through incremental rewriting and more efficient wiring-diagram data structures, to avoid the repeated full-graph scans that penalise dense and confounded models. Second, \textbf{broadening the query class} and integrating with probabilistic inference engines. Third, building a dedicated \textbf{interactive string-diagram visualiser} (supporting splicing, intervention, and rewrite operations) to replace Chyp's limitations. Fourth, exploring \textbf{formal integrations} with richer categorical and probabilistic toolchains---for example EfProb~\cite{cho2017efprob}---and connections to causal representation learning and reinforcement-learning pipelines. These directions would help the prototype evolve from a focused research artifact into a broadly interoperable toolchain for categorical causal reasoning.
 
 
 \bibliographystyle{splncs04}
