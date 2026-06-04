@@ -47,85 +47,136 @@ The remainder of the paper is organised as follows. Section~\ref{sec:background}
 
 \section{Categorical Background}\label{sec:background}
 
-This section summarizes how Bayesian networks and counterfactual surgery can be captured in categorical string diagram language.
+We work in the setting of \emph{Markov categories}~\cite{fritz2020synthetic} (also called cd-categories), the categorical framework underlying the string-diagram approach to causality of Jacobs, Kissinger and Zanasi~\cite{jacobs2019causal,jacobs2021causal}. This section fixes the diagrammatic vocabulary that the implementation in Section~\ref{sec:implementation} manipulates directly.
 
-\subsection{Bayesian Networks as String Diagrams}
- A Bayesian network is typically defined by a directed acyclic graph (DAG) and a joint distribution that factorizes according to parents. In a symmetric monoidal category, such a factorization corresponds to a string diagram where each conditional distribution is a box and each random variable is a wire. In the probabilistic setting, the category of stochastic kernels or a Markov category is a natural semantic domain \cite{fritz2020synthetic,jacobs2019causal}.
+\subsection{Causal Models as String Diagrams}
+A Markov category is a symmetric monoidal category in which every object $A$ carries a \emph{copy} map $A \to A\otimes A$ and a \emph{discard} map $A \to I$ to the monoidal unit, subject to the usual comonoid axioms; together with a \emph{uniform} source $I\to A$ these constitute the copy--discard--uniform (CDU) structure~\cite{fritz2020synthetic,jacobs2015}. Morphisms are drawn as \emph{string diagrams}~\cite{intro_to_string_diagram}: wires denote variables, boxes denote morphisms, sequential composition stacks boxes and the tensor places them side by side. A morphism $f:A\to B$ interpreted as a conditional distribution $P(B\mid A)$ is a \emph{channel}; a \emph{state} is a channel $I\to A$ (a distribution on $A$) and an \emph{effect} a morphism $A\to I$, of which the discard map is the canonical one. A morphism is \emph{deterministic} when it commutes with copying; the two cases we use are \emph{sharp states} (deterministic states, fixing a variable to a constant) and \emph{sharp effects} (constraining a wire to an observed value).
 
-A node with parents $\mathrm{pa}(X)$ is represented as a morphism
-\[ X : \bigotimes_{Y \in \mathrm{pa}(X)} Y \to X, \]
-which may be interpreted as the conditional distribution $P(X \mid \mathrm{pa}(X))$. The full Bayesian network is the monoidal composition of all such boxes, producing a single diagram that expresses the joint distribution by wiring outputs to the inputs of their children.
+In this language a structural causal model is assembled compositionally. Each endogenous variable $X$ with parents $\mathrm{pa}(X)$ becomes a \emph{mechanism}
+\[ f_X : \Big(\textstyle\bigotimes_{Y \in \mathrm{pa}(X)} Y\Big)\otimes U_X \;\longrightarrow\; X, \]
+a box that takes the parent wires together with a fresh exogenous noise source $U_X$ (a state $I\to U_X$) and produces the wire $X$. Wiring each mechanism's output into the inputs of its children---inserting copy maps wherever a variable feeds several children---yields a single string diagram whose denotation is the joint distribution (Figure~\ref{fig:string_diagrams}). Two structural advantages follow: conditional-independence (d-separation) properties surface as diagrammatic connectivity, and, crucially for us, interventions become \emph{local} rewrites rather than global symbolic substitutions.
 
-The graphical advantages are twofold. First, structural properties such as d-separation become visible as diagrammatic connectivity patterns. Second, interventions correspond to local rewriting operations on diagrams, rather than to global symbolic substitutions.
+Latent confounding is treated through \emph{Acyclic Directed Mixed Graphs} (ADMGs), whose bidirected edges $X\leftrightarrow Y$ record a shared hidden cause. Mirroring the implementation's compilation step, each bidirected edge is \emph{rootified}: it is replaced by an explicit latent root state feeding both $X$ and $Y$ through a copy map, turning implicit confounding into a shared exogenous source.
 
 \begin{figure}[t]
 \centering
 \begin{subfigure}[b]{0.45\linewidth}
 \centering
-\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
-\node[draw,rectangle,minimum width=1.8cm,minimum height=0.8cm] (z) {$P(Z)$};
-\node[draw,rectangle,minimum width=1.8cm,minimum height=0.8cm,right=1.6cm of z] (x) {$P(X\mid Z)$};
-\node[draw,rectangle,minimum width=1.8cm,minimum height=0.8cm,right=1.6cm of x] (y) {$P(Y\mid X)$};
-\draw[->] (z) -- (x);
-\draw[->] (x) -- (y);
+\begin{tikzpicture}[>=Stealth, font=\small,
+  box/.style={draw, rounded corners, fill=white, minimum width=0.9cm, minimum height=0.55cm, inner sep=2pt},
+  cp/.style={circle, fill, inner sep=1.3pt}]
+\draw[fill=gray!20] (-0.16,3.6) -- (0.16,3.6) -- (0,3.32) -- cycle;
+\node[right=1pt] at (0.16,3.5) {$\omega_Z$};
+\node[cp] (c1) at (0,3.0) {};
+\draw (0,3.32) -- (c1);
+\node[box] (cx) at (0,2.3) {$c_X$};
+\draw (c1) -- (cx.north);
+\draw (c1) -- (-1.0,3.0) -- (-1.0,0.1);
+\node at (-1.0,-0.15) {$Z$};
+\node[cp] (c2) at (0,1.7) {};
+\draw (cx.south) -- (c2);
+\draw (c2) -- (-0.5,1.7) -- (-0.5,0.1);
+\node at (-0.5,-0.15) {$X$};
+\node[box] (cy) at (0,1.0) {$c_Y$};
+\draw (c2) -- (cy.north);
+\draw (cy.south) -- (0,0.1);
+\node at (0,-0.15) {$Y$};
 \end{tikzpicture}
-\caption{Bayesian network as a string diagram.}
+\caption{Chain $Z\to X\to Y$, copies exposing each variable.}
 \label{fig:bn_diagram}
 \end{subfigure}
+\hfill
 \begin{subfigure}[b]{0.45\linewidth}
 \centering
-\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
-\node[draw,circle,minimum size=1cm] (u) {$U$};
-\node[draw,rectangle,minimum width=1.5cm,minimum height=0.8cm,right=1.6cm of u] (x) {$X$};
-\node[draw,rectangle,minimum width=1.5cm,minimum height=0.8cm,right=1.6cm of x] (y) {$Y$};
-\draw[->] (u) -- (x);
-\draw[->] (u) -- (y);
-\draw[->] (x) -- (y);
+\begin{tikzpicture}[>=Stealth, font=\small,
+  box/.style={draw, rounded corners, fill=white, minimum width=0.9cm, minimum height=0.55cm, inner sep=2pt},
+  cp/.style={circle, fill, inner sep=1.3pt}]
+\draw[fill=gray!20] (-0.16,3.6) -- (0.16,3.6) -- (0,3.32) -- cycle;
+\node[left=1pt] at (-0.16,3.5) {$R$};
+\node[cp] (cu) at (0,3.0) {};
+\draw (0,3.32) -- (cu);
+\node[box] (fx) at (-0.9,2.2) {$f_X$};
+\draw (cu) -- (-0.9,3.0) -- (fx.north);
+\node[cp] (cx) at (-0.9,1.6) {};
+\draw (fx.south) -- (cx);
+\draw (cx) -- (-1.5,1.6) -- (-1.5,0.1);
+\node at (-1.5,-0.15) {$X$};
+\node[box] (fy) at (0.9,1.0) {$f_Y$};
+\draw (cu) -- (0.6,3.0) -- (0.6,1.0) -- (fy.west);
+\draw (cx) -- (0.9,1.6) -- (fy.north);
+\draw (fy.south) -- (0.9,0.1);
+\node at (0.9,-0.15) {$Y$};
 \end{tikzpicture}
-\caption{Diagrammatic confounding and latent structure.}
+\caption{Latent root $R$ shared by $f_X$ and $f_Y$ via a copy map.}
 \label{fig:confound}
 \end{subfigure}
-\caption{String diagram representations of causal structure.}
+\caption{Causal models as string diagrams: triangles are exogenous states, rounded boxes are mechanisms (channels), and a dot is a copy map.}
 \label{fig:string_diagrams}
 \end{figure}
 
-\subsection{String Diagram Surgery}
-In the categorical literature, intervention and counterfactual reasoning can be formulated as surgery on string diagrams \cite{jacobs2019causal,lorenz2023causal}. An intervention on variable $X$ removes the original input wires corresponding to its parents and replaces the box for $X$ with a fixed assignment or a constant morphism. Graphically, this amounts to cutting incoming wires to $X$ and reconnecting the diagram to a new input source.
+\subsection{Surgery and Counterfactuals}
+An intervention $\mathrm{do}(X=x)$ is modelled by \emph{string diagram surgery}~\cite{jacobs2019causal,jacobs2021causal,lorenz2023causal}: the wires entering $f_X$ are \emph{cut}---the incoming parents are discarded---and $X$ is instead supplied by a sharp state $\mathsf{do}(X{=}x):I\to X$ fixing it to the constant $x$ (Figure~\ref{fig:original_model}). Categorically this replaces a channel by a constant morphism; graphically it severs $X$ from its causes while leaving the rest of the diagram intact, so the resulting diagram denotes the interventional distribution $P(\,\cdot \mid \mathrm{do}(X{=}x))$.
 
-Counterfactual queries require a parallel-world construction. The intervened and observational worlds are represented by separate copies of the diagram that share common exogenous sources. In string diagram terms, this is achieved by duplicating the subdiagram for the latent noise variables while applying surgery only to the world in which the intervention occurs. The resulting diagram captures both the factual and counterfactual dependencies in a single compositional object.
+Counterfactual queries such as $P(Y_x \mid X{=}x',\,Z{=}z)$ compare what \emph{did} happen with what \emph{would have} happened under a different intervention, and so require several worlds to coexist. They are captured by a \emph{parallel-world} (multiverse) construction: the model is duplicated once per world, surgery is applied only in the intervened world(s), and---the key point---the exogenous noise sources are \emph{shared} across worlds rather than re-sampled. Diagrammatically the latent state is copied into every world (Figure~\ref{fig:parallel_world}), so the worlds remain coupled through their common randomness; this is exactly the parallel-world semantics of counterfactual identification~\cite{pearl2009causality,shpitser2008complete}. Observed evidence ($X=x'$, $Z=z$) is imposed by attaching sharp effects to the corresponding output wires.
 
-This surgery-centric view clarifies the behaviour of counterfactual variables such as $Y_{x}$ and evidence conditions such as $X=x'$. The structural transformations that produce identifiable expressions correspond to rewrites in the underlying monoidal category, making apparent why some queries are identifiable and others are not.
+Whether a counterfactual query is \emph{identifiable}---expressible purely in terms of the observational distribution---is decided by the ID-CF algorithm~\cite{shpitser2008complete}. After surgery and simplification, the diagram decomposes into maximal confounded components, the \emph{c-components} (or districts) of the ADMG; their diagrammatic counterparts are the \emph{R-fragments} that the implementation extracts and rewrites. This decomposition makes plain why some queries are identifiable and others are not: identification succeeds exactly when every fragment's exogenous noise can be absorbed into a consistent, observable expression.
 
 \begin{figure}[t]
 \centering
 \begin{subfigure}[b]{0.45\linewidth}
 \centering
-\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
-\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm] (u) {$U$};
-\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of u] (x) {$X$};
-\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of x] (y) {$Y$};
-\draw[->] (u) -- (x);
-\draw[->] (u) -- (y);
-\draw[->] (x) -- (y);
+\begin{tikzpicture}[>=Stealth, font=\small,
+  box/.style={draw, rounded corners, fill=white, minimum width=0.9cm, minimum height=0.55cm, inner sep=2pt},
+  sb/.style={draw, fill=white, font=\footnotesize, inner sep=2pt, minimum height=0.4cm},
+  cp/.style={circle, fill, inner sep=1.3pt}]
+\draw[fill=gray!20] (-0.16,3.6) -- (0.16,3.6) -- (0,3.32) -- cycle;
+\node[left=1pt] at (-0.16,3.5) {$R$};
+\node[cp] (cu) at (0,3.0) {};
+\draw (0,3.32) -- (cu);
+\draw (cu) -- (-0.9,3.0) -- (-0.9,2.55);
+\draw (-1.05,2.5) -- (-0.75,2.5);
+\draw (-0.99,2.42) -- (-0.81,2.42);
+\draw (-0.93,2.34) -- (-0.87,2.34);
+\node[sb] (dox) at (-0.9,1.95) {$\mathsf{do}\,x$};
+\node[cp] (cx) at (-0.9,1.5) {};
+\draw (dox.south) -- (cx);
+\draw (cx) -- (-1.6,1.5) -- (-1.6,0.1);
+\node at (-1.6,-0.15) {$X$};
+\node[box] (fy) at (0.9,1.0) {$f_Y$};
+\draw (cu) -- (0.6,3.0) -- (0.6,1.0) -- (fy.west);
+\draw (cx) -- (0.9,1.5) -- (fy.north);
+\draw (fy.south) -- (0.9,0.1);
+\node at (0.9,-0.15) {$Y$};
 \end{tikzpicture}
-\caption{Original causal model with latent confounding.}
+\caption{Surgery: $X$'s parents are cut (discarded) and replaced by a sharp state.}
 \label{fig:original_model}
 \end{subfigure}
+\hfill
 \begin{subfigure}[b]{0.45\linewidth}
 \centering
-\begin{tikzpicture}[>=Stealth, scale=0.85, transform shape, every node/.style={font=\small}]
-\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm] (u) {$U$};
-\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of u] (x) {$X$};
-\node[draw,rectangle,minimum width=1.3cm,minimum height=0.7cm,right=1.4cm of x] (y) {$Y$};
-\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm,below=1.5cm of x] (dx) {$\mathrm{do}(X=x)$};
-\node[draw,rectangle,minimum width=1.6cm,minimum height=0.7cm,right=1.4cm of dx] (yx) {$Y_x$};
-\draw[->] (u) -- (x);
-\draw[->] (u) -- (y);
-\draw[->] (x) -- (y);
-\draw[->] (u) -- (yx);
-\draw[->] (dx) -- (yx);
+\begin{tikzpicture}[>=Stealth, font=\small,
+  box/.style={draw, rounded corners, fill=white, minimum width=0.9cm, minimum height=0.55cm, inner sep=2pt},
+  sb/.style={draw, fill=white, font=\footnotesize, inner sep=2pt, minimum height=0.4cm},
+  cp/.style={circle, fill, inner sep=1.3pt}]
+\draw[fill=gray!20] (-0.16,3.4) -- (0.16,3.4) -- (0,3.12) -- cycle;
+\node[above=0pt] at (0,3.4) {$R$};
+\node[cp] (cu) at (0,2.8) {};
+\draw (0,3.12) -- (cu);
+\draw[fill=gray!20] (-2.36,2.4) -- (-2.04,2.4) -- (-2.2,2.12) -- cycle;
+\node[left=1pt] at (-2.36,2.3) {$\omega_X$};
+\node[box] (cy1) at (-1.5,1.2) {$c_Y$};
+\draw (cu) -- (-1.0,2.8) -- (-1.0,1.2) -- (cy1.east);
+\draw (-2.2,2.12) -- (-2.2,1.55) -- (-1.5,1.55) -- (cy1.north);
+\draw (cy1.south) -- (-1.5,0.1);
+\node at (-1.5,-0.15) {$Y$};
+\node[sb] (dox) at (1.0,2.0) {$\mathsf{do}\,x$};
+\node[box] (cy2) at (1.7,1.2) {$c_Y$};
+\draw (cu) -- (2.2,2.8) -- (2.2,1.2) -- (cy2.east);
+\draw (dox.south) -- (1.0,1.55) -- (1.7,1.55) -- (cy2.north);
+\draw (cy2.south) -- (1.7,0.1);
+\node at (1.7,-0.15) {$Y_x$};
 \end{tikzpicture}
-\caption{Parallel-world construction for counterfactual query.}
+\caption{Parallel worlds: the factual world and the $\mathrm{do}(X{=}x)$ world share the latent $R$.}
 \label{fig:parallel_world}
 \end{subfigure}
 \caption{Diagrammatic surgery for counterfactual identification.}
