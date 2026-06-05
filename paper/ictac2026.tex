@@ -185,13 +185,13 @@ Whether a counterfactual query is \emph{identifiable}---expressible purely in te
 
 \section{Implementation}\label{sec:implementation}
 
-We implemented the approach in Julia on top of the Catlab ecosystem~\cite{catlab}, which provides a computational realisation of symmetric monoidal categories through \emph{wiring diagrams}. The whole computation manipulates a single kind of object: a Catlab \texttt{WiringDiagram} in which boxes are mechanisms (morphisms) and wires are variable dependencies. Each box carries a symbolic name encoding its role---\texttt{f\_X} for a mechanism, \texttt{PU\_X} for an exogenous source, \texttt{do\_X=x} for an intervention (a \emph{sharp state}), \texttt{obs\_X=x} for an observation (a \emph{sharp effect}), \texttt{c\_X} for a deterministic constant mechanism---so that surgery and identification are realised uniformly as rewrites on named boxes and their wiring.
+We implemented the approach in Julia on top of the Catlab ecosystem~\cite{catlab}, which provides a computational realisation of symmetric monoidal categories through \emph{wiring diagrams}(the concrete Catlab data structure used to implement the abstract structure of a string diagram). The whole computation manipulates a single kind of object: a Catlab \texttt{WiringDiagram} in which boxes are mechanisms (morphisms) and wires are variable dependencies. Each box carries a symbolic name encoding its role---\texttt{f\_X} for a mechanism, \texttt{PU\_X} for an exogenous source, \texttt{do\_X=x} for an intervention (a \emph{sharp state}), \texttt{obs\_X=x} for an observation (a \emph{sharp effect}), \texttt{c\_X} for a deterministic constant mechanism---so that surgery and identification are realised uniformly as rewrites on named boxes and their wiring.
 
 \subsection{Pipeline and Artifact}
 Identification is driven by a single entry point, \texttt{identify\_counterfactual} (alias \texttt{run\_cf\_pipeline}) in \texttt{src/id\_cf.jl}, which executes five stages, timing each independently and exporting an intermediate diagram after every stage (Figure~\ref{fig:architecture}):
 \begin{enumerate}
     \item \textbf{ADMG compilation} (\texttt{src/admg\_compile.jl}). An input Acyclic Directed Mixed Graph (ADMG) is \emph{rootified}---each bidirected edge $X \leftrightarrow Y$ is replaced by a fresh latent root feeding both endpoints---and then compiled by \texttt{graph\_b\_to\_scm} into a base structural diagram with one mechanism box $f_V : (\mathrm{pa}(V), U_V) \to V$ and one exogenous source $PU_V$ per variable.
-    \item \textbf{Parallel-world construction} (\texttt{build\_multiverse}). The base diagram is lifted into a multiverse diagram by duplicating each mechanism box once per world while \emph{sharing} the exogenous source boxes across all worlds---the diagrammatic counterpart of shared exogenous noise. An intervened variable splits into a discarded sink and a fresh \texttt{do\_X=x} source; an observed variable receives an \texttt{obs\_X=x} sharp-effect box.
+    \item \textbf{Parallel-world construction} (\texttt{src/build\_multiverse}). The base diagram is lifted into a multiverse diagram by duplicating each mechanism box once per world while \emph{sharing} the exogenous source boxes across all worlds---the diagrammatic counterpart of shared exogenous noise. An intervened variable splits into a discarded sink and a fresh \texttt{do\_X=x} source; an observed variable receives an \texttt{obs\_X=x} sharp-effect box.
     \item \textbf{Simplification} (\texttt{src/simplify\_cf.jl}). Four rewrite passes reduce the diagram to canonical form: pruning discarded branches and dead boxes, separating sharp effects from copy/fan-out, merging deterministic mechanisms with identical input sources, and absorbing exogenous noise by replacing each $f_X$ with a deterministic constant mechanism $c_X$.
     \item \textbf{ID-CF identification} (Step~4, \texttt{src/id\_cf.jl}). The simplified diagram is decomposed into \emph{R-fragments}---the diagrammatic counterpart of c-components (districts) in ADMGs---and each fragment is rewritten by case analysis into an interventional probability box $P(C_l, F_l^{out} \mid \mathrm{do}(D_l), \mathrm{do}(F_l^{in}))$. A residual unabsorbed exogenous source signals a non-identifiable query.
     \item \textbf{Expression output} (Step~5, \texttt{id\_cf\_step5}). The resulting probability boxes are parsed into a small expression tree and rendered as a LaTeX formula, with optional algebraic simplification (e.g.\ dropping vacuous interventions and eliminating normalised summations).
@@ -224,33 +224,94 @@ Causal models are described by an \texttt{ADMGModel} (directed and bidirected ed
 
 Three decisions characterise the design. First, a \textbf{single diagrammatic representation} is used end to end, so surgery, simplification, and identification are all rewrites on the same object rather than transformations between distinct data models. Second, the pipeline keeps \textbf{every intermediate stage explicit} and exports it to Chyp, making each transformation step inspectable---in contrast to symbolic tools where decomposition and simplification are internal. Third, the stages mirror the theoretical algorithm one-to-one, so each can be tested and optimised independently; the test suite in \texttt{test/} covers ADMG compilation, multiverse construction, simplification, R-fragment partitioning, and expression generation as separate module-level test sets.
 
+\subsection{Orienting and Running the Tool}
+
+For first-time users, the recommended entry point is \texttt{src/run\_demo.jl}. This script loads an input model and a counterfactual query, calls \texttt{identify\_counterfactual}, and prints whether the query is identifiable together with the resulting probability expression.
+
+The main inputs are stored in \texttt{examples/admg\_models/}, 
+\texttt{examples/string\_diagrams/}, and \texttt{examples/queries/}. A typical run consists of selecting a model and a matching query, executing \texttt{src/run\_demo.jl}, and inspecting the printed result. Optional trace files under \texttt{trace/} expose intermediate stages of the pipeline, which helps users understand how the tool proceeds through compilation, simplification, and identification.
+
+\subsection{Worked Example}
+We use a commute scenario as a worked example to illustrate the intermediate representations produced by the implementation. The model describes a daily travel setting with variables \(W,T,M,L,Y\), representing weather, departure time, mode of transport, lateness, and final work performance. 
+
+The counterfactual query asks: for someone who actually left at time \(t'\) under weather condition \(w\), what would their work performance have been if they had left at time \(t\), while also incorporating additional behavioural evidence that, under the same weather, they would use transport mode \(m\)? 
+
+Figure~\ref{fig:commute-example} shows the transformation from the input ADMG to a rootified diagram with an explicit latent root, then to the parallel-world counterfactual diagram, and finally to the simplified diagram used for identification.
+
+\begin{figure}[t]
+\centering
+
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{ADMG.png}
+    \caption{Input ADMG and rootification}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{simplify.png}
+    \caption{Simplified string diagram}
+\end{subfigure}
+
+\vspace{0.6em}
+
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{idcf.png}
+    \caption{Probability-box expression}
+\end{subfigure}
+
+\caption{Worked commute example. The input ADMG is first rootified by replacing the bidirected edge \(T \leftrightarrow Y\) with an explicit latent root. The tool then constructs the parallel-world diagram for the counterfactual query and simplifies it into the final probability-expression structure. The blue dashed box represents normalization.}
+\label{fig:commute-example}
+\end{figure}
+
 \section{Empirical Evaluation}\label{sec:discussion}
 
-We evaluate the prototype against \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs, and against the Python \texttt{y0} library. The benchmark harnesses live in \texttt{comparisons/\allowbreak runtime/} (\texttt{julia\_\allowbreak benchmark.jl}, \texttt{r\_cfid\_\allowbreak benchmark.R}, \texttt{python\_y0\_\allowbreak benchmark.py}); all timings are warm medians over repeated executions on a standard desktop, with the Julia and R measurements aligned so that the Julia identification cost (Step~4 $+$ Step~5) is compared against R's \texttt{identifiable($\cdot$)} call. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges).
+We evaluate the prototype against \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs, and against the Python \texttt{y0} library. The benchmark harnesses live in \texttt{comparisons/\allowbreak runtime/} (\texttt{julia\_\allowbreak benchmark.jl}, \texttt{r\_cfid\_\allowbreak benchmark.R}, \texttt{python\_y0\_\allowbreak benchmark.py}); all timings are warm medians over repeated executions on a standard desktop, and the reported ratios are computed as baseline total runtime divided by Julia total runtime. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges).
+
 
 \begin{table}[t]
 \centering
-\caption{Warm-median runtime against R \texttt{cfid}: standard benchmark queries (top) and synthetic graph families at $n=32$ (bottom). Speedup is R total over Julia total.}
+\caption{Warm-median runtime comparison against R \texttt{cfid} and Python \texttt{y0}: standard benchmark queries (top) and synthetic graph families at $n=32$ (bottom). Speedup ratios are baseline total runtime divided by Julia total runtime. A ratio above $1$ means Julia is faster; a ratio below $1$ means Julia is slower.}
 \label{tab:speedup}
-\begin{tabular}{lrrr}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrr}
 \toprule
-Case & Julia (ms) & R \texttt{cfid} (ms) & Speedup \\
+Case & Julia (ms) & R \texttt{cfid} (ms) & Python \texttt{y0} (ms) & R/Julia & \texttt{y0}/Julia \\
 \midrule
-\texttt{drug}                & $19.85$  & $53.37$    & $2.69\times$ \\
-\texttt{party}               & $10.15$  & $28.31$    & $2.79\times$ \\
-\texttt{hepar2\_conditional} & $90.84$  & $7812.44$  & $86.0\times$ \\
+\texttt{drug}
+    & $19.85$  & $53.37$   & $13.33$   & $2.69\times$ & $0.67\times$ \\
+
+\texttt{party}
+    & $10.15$  & $28.31$   & $4.84$    & $2.79\times$ & $0.48\times$ \\
+
+\texttt{hepar2\_conditional}
+    & $90.84$  & $7812.44$ & $2005.27$ & $86.00\times$ & $22.08\times$ \\
 \midrule
-\texttt{chain} ($n{=}32$)    & $162.44$ & $963.69$   & $5.93\times$ \\
-\texttt{fanin} ($n{=}32$)    & $161.65$ & $891.76$   & $5.52\times$ \\
-\texttt{dense} ($n{=}32$)    & $400.67$ & $1408.74$  & $3.52\times$ \\
-\texttt{chain\_bi} ($n{=}32$)& $603.06$ & $389.40$   & $0.65\times$ \\
+\texttt{chain} ($n{=}32$)
+    & $113.38$ & $694.98$  & $540.64$  & $6.13\times$ & $4.77\times$ \\
+
+\texttt{fanin} ($n{=}32$)
+    & $188.52$ & $714.90$  & $199.77$  & $3.79\times$ & $1.06\times$ \\
+
+\texttt{dense} ($n{=}32$)
+    & $302.95$ & $708.91$  & $474.46$  & $2.34\times$ & $1.57\times$ \\
+
+\texttt{chain\_bi} ($n{=}32$)
+    & $454.37$ & $170.59$  & $17.89$   & $0.38\times$ & $0.04\times$ \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
-On the standard benchmarks (Table~\ref{tab:speedup}, top) the categorical tool is consistently faster than \texttt{cfid}: by roughly $2.7\times$ on the small \texttt{drug} and \texttt{party} queries and by $86\times$ on the larger \texttt{hepar2} network. A stage-level breakdown explains why. The dominant cost in our pipeline is the explicit \emph{simplification} stage (for \texttt{drug}, $16.7$ of $19.85$\,ms), while identification itself (Steps~4--5) is comparatively negligible; \texttt{cfid}, conversely, spends almost all of its time inside \texttt{identifiable}. The categorical method thus trades a heavier but reusable diagram-simplification phase for a very light identification phase, and this trade pays off increasingly as the model grows: on chains the speedup rises monotonically from $1.14\times$ at $n=8$ to $5.93\times$ at $n=32$.
+On the standard benchmarks (Table~\ref{tab:speedup}, top), the categorical tool is consistently faster than R \texttt{cfid}: by roughly $2.7\times$ on the small \texttt{drug} and \texttt{party} queries, and by $86\times$ on the larger \texttt{hepar2\_conditional} network. The comparison with Python \texttt{y0} is more mixed. On the small \texttt{drug} and \texttt{party} examples, \texttt{y0} is faster than the Julia implementation, with ratios below $1\times$ in the \texttt{y0}/Julia column. This suggests that a direct graph-level implementation has lower overhead on small queries. However, on the larger \texttt{hepar2\_conditional} benchmark, Julia is about $22.08\times$ faster than \texttt{y0}, indicating that the explicit simplification pipeline becomes more beneficial as the model grows.
 
-The synthetic families also expose where the trade-off does \emph{not} pay off (Table~\ref{tab:speedup}, bottom). On sparse and moderately dense graphs the categorical tool wins by $3.5$--$6\times$, but on the heavily-confounded \texttt{chain\_bi} family the result reverses: at $n=32$ our tool is only $0.65\times$ as fast (i.e.\ slower), because simplification cost is driven up by bidirected confounding rather than by the identification work that \texttt{cfid} performs. On this family the Python \texttt{y0} library is in fact faster than both. We report this honestly: the categorical approach is competitive-to-faster on sparse and moderately dense models, but its simplification stage currently penalises it on densely confounded graphs.
+A stage-level breakdown explains this behaviour. The dominant cost in the Julia pipeline is the explicit \emph{simplification} stage, while identification itself (Steps~4--5) is comparatively lightweight. For example, in the \texttt{drug} benchmark, simplification accounts for most of the total runtime. R \texttt{cfid}, by contrast, exposes the main computation through the single \texttt{identifiable} call. The categorical method therefore trades a heavier diagram-simplification phase for a very light final identification phase. This trade-off is beneficial when simplification substantially reduces the later identification problem, especially on larger or structurally favourable graphs.
+
+The synthetic families expose this structure-dependent behaviour more clearly (Table~\ref{tab:speedup}, bottom). On \texttt{chain}, \texttt{fanin}, and \texttt{dense}, Julia is faster than R \texttt{cfid}, with speed-ups of $6.13\times$, $3.79\times$, and $2.34\times$, respectively. Compared with Python \texttt{y0}, Julia is faster on \texttt{chain} and \texttt{dense}, and roughly comparable on \texttt{fanin}. These results suggest that the diagrammatic pipeline is competitive on sparse and moderately connected graph structures.
+
+The main limitation appears on the heavily confounded \texttt{chain\_bi} family. Here the result reverses: Julia is slower than both R \texttt{cfid} and Python \texttt{y0}, with ratios of $0.38\times$ and $0.04\times$, respectively. The reason is that bidirected confounding greatly increases the cost of diagrammatic simplification. The identification phase remains small, but the preprocessing cost dominates the total runtime.
+
 
 For correctness we use cross-tool validation. Across all identifiable benchmark queries our tool and \texttt{cfid} return expressions denoting the same interventional/counterfactual distribution (up to ordering and formatting), and both correctly report failure on the non-identifiable queries. Beyond runtime, making string diagrams first-class objects gives the tool a form of \textbf{semantic transparency} absent from symbolic implementations: every transformation step---ADMG compilation, multiverse construction, each simplification pass, and fragment identification---is exported to Chyp and can be inspected, whereas in \texttt{cfid} decomposition and simplification are internal. The use of Catlab and Chyp also connects the implementation to the categorical and diagrammatic-reasoning communities rather than positioning it purely within the causal-inference software ecosystem.
 
