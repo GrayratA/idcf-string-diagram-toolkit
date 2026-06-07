@@ -6,6 +6,8 @@ This folder contains both supported input styles for `identify_counterfactual`:
 - `examples/admg_models/`: ADMG inputs (`ADMGModel` or BN-imported ADMG).
 - `examples/queries/`: counterfactual query sets.
 
+It also contains causal-inference examples under `examples/causal_inference/`. These use the separate `infer_causal_effect` interface, not `identify_counterfactual`.
+
 ## Current Example Set
 
 - StringDiagram:
@@ -22,6 +24,8 @@ This folder contains both supported input styles for `identify_counterfactual`:
   - `queries/drug_queries.jl`
   - `queries/party_queries.jl`
   - `queries/hepar2_conditional_queries.jl`
+- Causal inference:
+  - `causal_inference/smoking_scenario.jl`
 
 ## Scenario Notes (Real-World Meaning)
 
@@ -41,6 +45,11 @@ This folder contains both supported input styles for `identify_counterfactual`:
 
 - `hepar2` (`hepar2_bn_admg.jl` + `hepar2_conditional_queries.jl`)
   - The HEPAR2 case moves from toy examples to a realistic medical network. For a patient with observed evidence such as `age`, `sex`, and `pbc`, we ask about the likelihood of `carcinoma` under a hypothetical age-related intervention, while preserving the rest of the observed context. This example shows that the same workflow used for small didactic stories can still operate on large clinical graphs with many background variables.
+
+- `causal_inference/smoking_scenario.jl`
+  - This example asks a direct causal question about smoking. `S` records whether a person smokes, `T` represents the tar level that results from smoking, and `C` records whether cancer occurs. Instead of only asking how cancer is associated with smoking in the observed data, the query asks what the cancer distribution would be if we actively set smoking to a chosen value: `P(C | do(S))`.
+  - The string diagram describes the causal structure of the example: smoking affects tar, and tar together with background variation affects cancer. The tool checks that this diagram has the right shape for the comb-disintegration calculation.
+  - The probabilities are provided as an observational joint table `P(S,T,C)`. In the current implementation, the diagram checks the structure and the table provides the numeric values used to compute the effect.
 
 ## Variable Glossary
 
@@ -73,6 +82,12 @@ This folder contains both supported input styles for `identify_counterfactual`:
   - `pbc`: a liver-disease-related clinical variable in HEPAR2.
   - `carcinoma`: target cancer outcome variable.
   - Note: the full HEPAR2 graph has many additional variables; this demo conditions/marginalizes over them automatically.
+
+- `causal_inference` variables
+  - `S`: intervention variable in the smoking-style examples.
+  - `T`: bridge variable between `S` and the outcome.
+  - `C`: outcome variable.
+  - `H`: latent/internal wire used inside the string diagram; it is not included in the observational joint table.
 
 ## File Contract
 
@@ -132,3 +147,19 @@ StringDiagram party:
 ```powershell
 julia --project=. src/run_demo.jl --diagram examples/string_diagrams/party_scm.jl --queries examples/queries/party_queries.jl
 ```
+
+Causal inference smoking scenario:
+
+```powershell
+julia --project=. examples/causal_inference/smoking_scenario.jl
+```
+
+## Causal Inference Limitations
+
+The causal-inference examples are not counterfactual ID-CF examples. They use `infer_causal_effect`, which currently supports a comb-disintegration workflow:
+
+- The user provides a string diagram and an observational joint probability table.
+- The diagram is used to check for the required comb structure.
+- The joint table is used for the numerical calculation of `P(C | do(A))`.
+
+The current implementation does not yet attach stochastic matrices to each box in the string diagram. It also does not compose the diagram to derive the observational joint distribution automatically. This means the examples assume the joint table is already available and compatible with the intended model.

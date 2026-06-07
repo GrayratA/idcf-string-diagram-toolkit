@@ -4,7 +4,7 @@ Counterfactual identification prototype based on Julia/Catlab.
 
 ## Repository Layout
 
-- `src/`: core Julia implementation (`admg_compile`, `bn_import`, `simplify_cf`, `id_cf`, utilities)
+- `src/`: core Julia implementation (`admg_compile`, `bn_import`, `simplify_cf`, `id_cf`, causal-inference utilities)
   - `src/123.ipynb` and `src/test.ipynb` are development-time testing notebooks and can be ignored.
 - `test/`: Julia test suites (`admg_compile`, `simplify_cf`, `id_cf`)
 - `net/`: Bayesian network structure files (for example `hepar2.net`)
@@ -159,6 +159,52 @@ Alias:
 Troubleshooting:
 - If `res.identifiable == false`, check `res.failure_stage` and `res.error`.
 - If you pass `trace_dir`, ensure `include("src/chyp_export.jl")` was loaded.
+
+## Causal Inference API (`infer_causal_effect`)
+
+The causal-inference extension currently implements a comb-disintegration path for finite discrete models. It is separate from the counterfactual ID-CF pipeline.
+
+Current scope:
+- Input: a Catlab string diagram, finite variable values, an observational joint probability table, and an intervention/outcome query.
+- Structure check: the tool verifies that the diagram contains a comb structure with `g : A -> B` and `f : B -> A ⊗ C`.
+- Computation: if the structure check succeeds, it computes the causal effect `P(C | do(A))`.
+- Output: computability status, the discovered or supplied `A/B/C` witness, readable `g`/`f` subdiagram boxes, the comb decomposition, and the effect channel.
+
+Run the smoking scenario:
+
+```powershell
+julia --project=. examples/causal_inference/smoking_scenario.jl
+```
+
+Minimal usage:
+
+```julia
+using Catlab
+using Catlab.Theories
+using Catlab.Programs
+using Catlab.WiringDiagrams
+
+include("src/causal_inference.jl")
+
+result = infer_causal_effect(
+    smoking_diagram;
+    variables=[
+        :S => ["no_smoke", "smoke"],
+        :T => ["low_tar", "high_tar"],
+        :C => ["no_cancer", "cancer"],
+    ],
+    probabilities=probs,
+    intervention=[:S],
+    outcome=[:C],
+)
+```
+
+Important limitation:
+- The current implementation assumes the observational joint distribution is already given.
+- The string diagram is used to validate the comb structure; the numeric result is computed from the supplied joint table.
+- The tool does not yet attach stochastic matrices to individual Catlab boxes or compose those boxes to derive the joint distribution automatically.
+- Therefore, the current feature is best described as diagram-validated comb inference from a given joint distribution, not a fully executable probabilistic string-diagram model.
+- It is not yet a fully general causal inference engine for arbitrary diagrams and arbitrary causal-effect queries.
 
 ## Runtime Benchmarks
 

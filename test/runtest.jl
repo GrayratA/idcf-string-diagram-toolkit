@@ -15,6 +15,7 @@ include(joinpath(@__DIR__, "..", "src", "utils.jl"))
 include(joinpath(@__DIR__, "..", "src", "admg_compile.jl"))
 include(joinpath(@__DIR__, "..", "src", "simplify_cf.jl"))
 include(joinpath(@__DIR__, "..", "src", "id_cf.jl"))
+include(joinpath(@__DIR__, "..", "src", "causal_inference.jl"))
 
 
 # ===============================
@@ -27,7 +28,7 @@ include(joinpath(@__DIR__, "..", "src", "id_cf.jl"))
     include(joinpath(@__DIR__, "admg_compile", "test_rootify.jl"))
 end
 
-# ===============================s
+# ===============================
 # 2. simplified-cf tests
 # ===============================
 @testset "simplified-cf" begin
@@ -49,4 +50,11 @@ end
 
 @testset "id-cf Step5" begin
     include(joinpath(@__DIR__, "id_cf", "test_step5.jl"))
+end
+
+@testset "causal inference" begin
+    include(joinpath(@__DIR__, "causal_inference", "test_finite_stoch.jl"))
+    include(joinpath(@__DIR__, "causal_inference", "test_comb_disintegration.jl"))
+    include(joinpath(@__DIR__, "causal_inference", "test_causal_effect.jl"))
+    include(joinpath(@__DIR__, "causal_inference", "test_catlab_comb.jl"))
 end
