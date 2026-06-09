@@ -26,10 +26,58 @@ function infer_causal_effect(
     A::Vector{Symbol},
     B::Vector{Symbol},
     C::Vector{Symbol},
+    context::Vector{Symbol}=Symbol[],
+    intervention::Union{Nothing,Vector{Symbol}}=nothing,
     require_full_support::Bool=true,
     reconstruction_atol::Float64=1e-8,
+    validate_reconstruction::Bool=true,
 )::CausalEffectResult
     try
+        if !isempty(context) || intervention !== nothing
+            X = intervention === nothing ? A : intervention
+            all(x -> x in A, X) ||
+                error("intervention variables must be contained in A")
+            all(x -> x in A, context) ||
+                error("context variables must be contained in A")
+            Set(A) == union(Set(context), Set(X)) ||
+                error("A must be exactly context union intervention for context-aware inference")
+
+            effect = cut_comb_direct_context(
+                state;
+                context=context,
+                intervention=X,
+                B=B,
+                C=C,
+                require_full_support=require_full_support,
+            )
+            return CausalEffectResult(
+                true,
+                effect,
+                nothing,
+                nothing,
+                true,
+                nothing,
+            )
+        end
+
+        if !validate_reconstruction
+            effect = cut_comb_direct(
+                state;
+                A=A,
+                B=B,
+                C=C,
+                require_full_support=require_full_support,
+            )
+            return CausalEffectResult(
+                true,
+                effect,
+                nothing,
+                nothing,
+                true,
+                nothing,
+            )
+        end
+
         comb = comb_disintegrate(
             state;
             A=A,

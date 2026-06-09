@@ -15,9 +15,9 @@ include(joinpath(@__DIR__, "..", "..", "src", "causal_inference.jl"))
 # Query:
 #   P(C | do(S))
 #
-# The string diagram below decomposes the joint state
-# omega : I -> S x T x C. Box t is the g-region. Boxes h, s, and c form the
-# f-region after the T wire is cut.
+# The string diagram below decomposes the joint state omega : I -> S x T x C.
+# The user only provides the variable split A/B/C. The tool identifies the
+# g-region and checks that the remaining boxes form the f-region.
 
 @present SmokingInferenceExample(FreeCartesianCategory) begin
     (S, T, C, H)::Ob
@@ -64,8 +64,12 @@ result = infer_causal_effect(
         :C => ["no_cancer", "cancer"],
     ],
     probabilities=probs,
-    intervention=[:S],
-    outcome=[:C],
+    comb_structure=CombStructure(
+        context=Symbol[],
+        intervention=[:S],
+        bridge=[:T],
+        outcome=[:C],
+    ),
 )
 
 println("== Smoking string diagram input ==")
@@ -75,9 +79,10 @@ println()
 
 println("== Comb witness ==")
 witness = result.witness
-println("A = ", witness.A, "  # intervention variable")
-println("B = ", witness.B, "  # bridge variable")
-println("C = ", witness.C, "  # outcome variable")
+println("context      = ", witness.context)
+println("intervention = ", witness.intervention)
+println("bridge       = ", witness.B)
+println("outcome      = ", witness.C)
 println()
 
 println("== Subdiagram proof ==")

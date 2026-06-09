@@ -26,6 +26,7 @@ It also contains causal-inference examples under `examples/causal_inference/`. T
   - `queries/hepar2_conditional_queries.jl`
 - Causal inference:
   - `causal_inference/smoking_scenario.jl`
+  - `causal_inference/hepar2_comb_scenario.jl`
 
 ## Scenario Notes (Real-World Meaning)
 
@@ -47,9 +48,14 @@ It also contains causal-inference examples under `examples/causal_inference/`. T
   - The HEPAR2 case moves from toy examples to a realistic medical network. For a patient with observed evidence such as `age`, `sex`, and `pbc`, we ask about the likelihood of `carcinoma` under a hypothetical age-related intervention, while preserving the rest of the observed context. This example shows that the same workflow used for small didactic stories can still operate on large clinical graphs with many background variables.
 
 - `causal_inference/smoking_scenario.jl`
-  - This example asks a direct causal question about smoking. `S` records whether a person smokes, `T` represents the tar level that results from smoking, and `C` records whether cancer occurs. Instead of only asking how cancer is associated with smoking in the observed data, the query asks what the cancer distribution would be if we actively set smoking to a chosen value: `P(C | do(S))`.
-  - The string diagram describes the causal structure of the example: smoking affects tar, and tar together with background variation affects cancer. The tool checks that this diagram has the right shape for the comb-disintegration calculation.
-  - The probabilities are provided as an observational joint table `P(S,T,C)`. In the current implementation, the diagram checks the structure and the table provides the numeric values used to compute the effect.
+  - This example is a small health story. `S` records whether a person smokes, `T` records the tar exposure caused by smoking, and `C` records whether cancer occurs. The question is not just whether smoking and cancer are associated in the observed data. The question is what the cancer distribution would be if we actively set smoking to a chosen value: `P(C | do(S))`.
+  - To run it, the user provides the smoking diagram, an observational table `P(S,T,C)`, and marks `S` as the intervention variable, `T` as the intermediate bridge, and `C` as the outcome. The tool checks that the diagram supports this calculation and returns the numerical interventional distribution.
+
+
+- `causal_inference/hepar2_comb_scenario.jl`
+  - This is the larger clinical example. HEPAR2 is a liver-disease network with 70 clinical variables and 123 directed edges. In this demo, we focus on one concrete pathway: hospital-related history, surgery history, and choledocholithotomy may affect injection or transfusion exposure, and those exposures may affect chronic hepatitis.
+  - The question is: if we actively set the hospital/surgery/choledocholithotomy-side variables, what distribution would we get for chronic hepatitis? In the main demo this is `P(ChHepatitis | do(hospital, surgery, choledocholithotomy))`.
+  - The synthetic table is used only to demonstrate and benchmark the interface; it is not the original HEPAR2 CPT parameterization. The pyAgrum comparison uses the same selected variables and checks that Julia returns the same numerical distribution.
 
 ## Variable Glossary
 
@@ -83,11 +89,19 @@ It also contains causal-inference examples under `examples/causal_inference/`. T
   - `carcinoma`: target cancer outcome variable.
   - Note: the full HEPAR2 graph has many additional variables; this demo conditions/marginalizes over them automatically.
 
-- `causal_inference` variables
-  - `S`: intervention variable in the smoking-style examples.
-  - `T`: bridge variable between `S` and the outcome.
-  - `C`: outcome variable.
-  - `H`: latent/internal wire used inside the string diagram; it is not included in the observational joint table.
+- `causal_inference/smoking_scenario` variables
+  - `S`: smoking status. This is the intervention variable in the query `P(C | do(S))`.
+  - `T`: tar exposure level caused by smoking. This is the bridge variable between smoking and cancer.
+  - `C`: cancer outcome.
+  - `H`: unobserved background health or susceptibility factor used inside the string diagram. It is part of the diagrammatic structure, but it is not included in the supplied observational joint table `P(S,T,C)`.
+
+- `causal_inference/hepar2_comb_scenario` variables
+  - `hospital`: whether the patient has a hospital-related exposure or admission history. In the main demo this is an intervention variable; in some benchmark cases it is used as observed context.
+  - `surgery`: whether the patient has a surgery-related history. This is an intervention variable in the main demo.
+  - `choledocholithotomy`: bile-duct or gallstone-related surgical history. This variable has multiple synthetic values in the example and is an intervention variable in the main demo.
+  - `injections`: injection-related exposure. This is a bridge variable.
+  - `transfusion`: blood transfusion-related exposure. This is a bridge variable.
+  - `ChHepatitis`: chronic hepatitis status. This is the outcome variable.
 
 ## File Contract
 
@@ -154,12 +168,29 @@ Causal inference smoking scenario:
 julia --project=. examples/causal_inference/smoking_scenario.jl
 ```
 
+Causal inference HEPAR2 comb scenario:
+
+```powershell
+julia --project=. examples/causal_inference/hepar2_comb_scenario.jl
+```
+
+pyAgrum numerical baseline for HEPAR2 comb cases:
+
+```powershell
+python comparisons/runtime/python_pyagrum_hepar2_comb_cases_benchmark.py 30 5
+python comparisons/runtime/make_hepar2_comb_table.py
+```
+
 ## Causal Inference Limitations
 
 The causal-inference examples are not counterfactual ID-CF examples. They use `infer_causal_effect`, which currently supports a comb-disintegration workflow:
 
 - The user provides a string diagram and an observational joint probability table.
-- The diagram is used to check for the required comb structure.
-- The joint table is used for the numerical calculation of `P(C | do(A))`.
+- The user provides the comb variables: observed context `A`, intervention variables `X`, bridge variables `B`, and outcome variables `C`.
+- If there is no context, this reduces to the basic form `P(C | do(X))`.
+- With context, the target is `P(C | A, do(X))`.
+- The tool identifies the `g` region, assigns the remaining internal boxes to `f`, and checks the required comb boundaries. It uses a fast candidate first and then a complete finite search over internal box partitions if needed.
+- Explicit `g_boxes` and `f_boxes` are still available as an advanced override, but they are not the default user interface.
+- The joint table is used for the numerical calculation of the corresponding effect channel.
 
 The current implementation does not yet attach stochastic matrices to each box in the string diagram. It also does not compose the diagram to derive the observational joint distribution automatically. This means the examples assume the joint table is already available and compatible with the intended model.

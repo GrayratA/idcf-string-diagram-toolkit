@@ -15,7 +15,9 @@ struct CausalInferenceProblem
     diagram::WiringDiagram
     variables::Vector{FiniteVariable}
     probabilities::Array{Float64}
+    comb_structure::Union{Nothing,CombStructure}
     intervention::Union{Nothing,Vector{Symbol}}
+    context::Union{Nothing,Vector{Symbol}}
     bridge::Union{Nothing,Vector{Symbol}}
     outcome::Union{Nothing,Vector{Symbol}}
     witness::Union{Nothing,CombWitness}
@@ -24,17 +26,24 @@ struct CausalInferenceProblem
         diagram::WiringDiagram,
         variables::Vector{FiniteVariable},
         probabilities::AbstractArray{<:Real};
+        comb_structure::Union{Nothing,CombStructure}=nothing,
         intervention::Union{Nothing,Vector{Symbol}}=nothing,
+        context::Union{Nothing,Vector{Symbol}}=nothing,
         bridge::Union{Nothing,Vector{Symbol}}=nothing,
         outcome::Union{Nothing,Vector{Symbol}}=nothing,
         witness::Union{Nothing,CombWitness}=nothing,
     )
-        witness === nothing && intervention === nothing &&
-            error("provide either witness or intervention/outcome")
-        witness === nothing && outcome === nothing &&
-            error("provide either witness or intervention/outcome")
+        if comb_structure !== nothing
+            (witness !== nothing || intervention !== nothing || bridge !== nothing || outcome !== nothing) &&
+                error("provide either comb_structure or witness/intervention/bridge/outcome, not both")
+        else
+            witness === nothing && intervention === nothing &&
+                error("provide either comb_structure, witness, or intervention/outcome")
+            witness === nothing && outcome === nothing &&
+                error("provide either comb_structure, witness, or intervention/outcome")
+        end
         probs = Array{Float64}(probabilities)
-        return new(diagram, variables, probs, intervention, bridge, outcome, witness)
+        return new(diagram, variables, probs, comb_structure, intervention, context, bridge, outcome, witness)
     end
 end
 
@@ -63,7 +72,9 @@ function CausalInferenceProblem(
     diagram::WiringDiagram;
     variables,
     probabilities::AbstractArray{<:Real},
+    comb_structure::Union{Nothing,CombStructure}=nothing,
     intervention::Union{Nothing,Vector{Symbol}}=nothing,
+    context::Union{Nothing,Vector{Symbol}}=nothing,
     bridge::Union{Nothing,Vector{Symbol}}=nothing,
     outcome::Union{Nothing,Vector{Symbol}}=nothing,
     witness::Union{Nothing,CombWitness}=nothing,
@@ -72,7 +83,9 @@ function CausalInferenceProblem(
         diagram,
         _finite_variables_from_specs(variables),
         probabilities;
+        comb_structure=comb_structure,
         intervention=intervention,
+        context=context,
         bridge=bridge,
         outcome=outcome,
         witness=witness,
@@ -96,18 +109,22 @@ function infer_causal_effect(
     problem::CausalInferenceProblem;
     require_full_support::Bool=true,
     reconstruction_atol::Float64=1e-8,
+    validate_reconstruction::Bool=true,
 )::CombOnlyCausalEffectResult
     observational_joint = JointState(problem.variables, problem.probabilities)
 
     return infer_causal_effect(
         problem.diagram,
         observational_joint;
+        comb_structure=problem.comb_structure,
         witness=problem.witness,
         intervention=problem.intervention,
+        context=problem.context,
         bridge=problem.bridge,
         outcome=problem.outcome,
         require_full_support=require_full_support,
         reconstruction_atol=reconstruction_atol,
+        validate_reconstruction=validate_reconstruction,
     )
 end
 
@@ -115,18 +132,23 @@ function infer_causal_effect(
     diagram::WiringDiagram;
     variables,
     probabilities::AbstractArray{<:Real},
+    comb_structure::Union{Nothing,CombStructure}=nothing,
     intervention::Union{Nothing,Vector{Symbol}}=nothing,
+    context::Union{Nothing,Vector{Symbol}}=nothing,
     bridge::Union{Nothing,Vector{Symbol}}=nothing,
     outcome::Union{Nothing,Vector{Symbol}}=nothing,
     witness::Union{Nothing,CombWitness}=nothing,
     require_full_support::Bool=true,
     reconstruction_atol::Float64=1e-8,
+    validate_reconstruction::Bool=true,
 )::CombOnlyCausalEffectResult
     problem = CausalInferenceProblem(
         diagram;
         variables=variables,
         probabilities=probabilities,
+        comb_structure=comb_structure,
         intervention=intervention,
+        context=context,
         bridge=bridge,
         outcome=outcome,
         witness=witness,
@@ -136,6 +158,7 @@ function infer_causal_effect(
         problem;
         require_full_support=require_full_support,
         reconstruction_atol=reconstruction_atol,
+        validate_reconstruction=validate_reconstruction,
     )
 end
 

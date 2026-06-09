@@ -165,10 +165,14 @@ Troubleshooting:
 The causal-inference extension currently implements a comb-disintegration path for finite discrete models. It is separate from the counterfactual ID-CF pipeline.
 
 Current scope:
-- Input: a Catlab string diagram, finite variable values, an observational joint probability table, and an intervention/outcome query.
-- Structure check: the tool verifies that the diagram contains a comb structure with `g : A -> B` and `f : B -> A ⊗ C`.
-- Computation: if the structure check succeeds, it computes the causal effect `P(C | do(A))`.
-- Output: computability status, the discovered or supplied `A/B/C` witness, readable `g`/`f` subdiagram boxes, the comb decomposition, and the effect channel.
+- Input: a Catlab string diagram, finite variable values, an observational joint probability table, and a user-supplied comb witness.
+- Comb witness: the user provides observed context variables, intervention variables, bridge variables, and outcome variables.
+- Basic form: if `context=[]`, the result is `P(outcome | do(intervention))`.
+- Context-aware form: if context variables are provided, the result is `P(outcome | context, do(intervention))`.
+- Structure check: internally the tool builds the comb boundary `A = context ∪ intervention`, identifies the `g` region automatically, treats all remaining internal boxes as the `f` region, and verifies the boundaries `g : A -> B` and `f : B -> A ⊗ C`. It first tries a fast candidate and then falls back to complete finite search over internal box partitions.
+- Optional override: explicit `g_boxes` and `f_boxes` can still be supplied for debugging or controlled experiments, but they are not the normal interface.
+- Computation: if the structure check succeeds, it computes the corresponding finite causal-effect channel.
+- Output: computability status, the supplied or discovered `A/B/C` witness, readable `g`/`f` subdiagram boxes, the comb decomposition, and the effect channel.
 
 Run the smoking scenario:
 
@@ -194,14 +198,37 @@ result = infer_causal_effect(
         :C => ["no_cancer", "cancer"],
     ],
     probabilities=probs,
-    intervention=[:S],
-    outcome=[:C],
+    comb_structure=CombStructure(
+        context=Symbol[],
+        intervention=[:S],
+        bridge=[:T],
+        outcome=[:C],
+    ),
+)
+```
+
+Context-aware usage:
+
+```julia
+result = infer_causal_effect(
+    diagram;
+    variables=variables,
+    probabilities=probs,
+    comb_structure=CombStructure(
+        context=[:hospital],
+        intervention=[:surgery, :choledocholithotomy],
+        bridge=[:injections, :transfusion],
+        outcome=[:ChHepatitis],
+    ),
 )
 ```
 
 Important limitation:
 - The current implementation assumes the observational joint distribution is already given.
 - The string diagram is used to validate the comb structure; the numeric result is computed from the supplied joint table.
+- The normal mode is: the user supplies `context/intervention/bridge/outcome`; the tool identifies `g`, assigns the remaining internal boxes to `f`, and checks the two required boundaries.
+- Explicit `g_boxes`/`f_boxes` are only an advanced override. If they are used with `cover_all_boxes=true`, they must cover every internal box in the diagram.
+- The automatic `g/f` recognizer is complete for the current syntactic comb-shape check on finite Catlab wiring diagrams, but the exhaustive fallback is exponential in the number of internal boxes.
 - The tool does not yet attach stochastic matrices to individual Catlab boxes or compose those boxes to derive the joint distribution automatically.
 - Therefore, the current feature is best described as diagram-validated comb inference from a given joint distribution, not a fully executable probabilistic string-diagram model.
 - It is not yet a fully general causal inference engine for arbitrary diagrams and arbitrary causal-effect queries.

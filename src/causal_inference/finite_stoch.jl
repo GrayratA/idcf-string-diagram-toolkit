@@ -122,6 +122,8 @@ end
 Return the marginal distribution over `keep`, in exactly that variable order.
 """
 function marginal(state::JointState, keep::Vector{Symbol})::JointState
+    keep == variable_names(state.variables) && return state
+
     keep_vars = _variables_by_name(state.variables, keep)
     keep_axes = [_var_index(state.variables, name) for name in keep]
     out_dims = Tuple(length(v.values) for v in keep_vars)

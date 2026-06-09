@@ -19,6 +19,14 @@ Rscript comparisons/runtime/r_cfid_benchmark.R 30 5
 python comparisons/runtime/python_y0_benchmark.py 30 5
 ```
 
+Causal-inference / comb-disintegration benchmark:
+
+```powershell
+julia --project=. comparisons/runtime/julia_hepar2_comb_cases_benchmark.jl 30 5
+python comparisons/runtime/python_pyagrum_hepar2_comb_cases_benchmark.py 30 5
+python comparisons/runtime/make_hepar2_comb_table.py
+```
+
 The current scripts benchmark three examples:
 
 - `drug`
@@ -32,10 +40,17 @@ The current scripts benchmark three examples:
 - `commute`
 - `hepar2_conditional` (via a binary-event mapping of the conditional counterfactual query)
 
+The causal-inference benchmark scripts currently benchmark multiple HEPAR2-selected comb queries, including both `P(C | do(A))` and context-aware `P(C | context, do(intervention))` cases. The numerical baseline is reduced pyAgrum `causalImpact`, not y0. The processed comparison table is:
+
+- `comparisons/runtime/hepar2_comb_pyagrum_reduced_runtime_by_complexity.csv`
+
 Notes on alignment:
 
 - Both implementations include all preprocessing done inside each script's run function in `total`.
 - For `party`, Julia uses `data_mode=:none` and R `cfid` omits the `data` argument to avoid a data-mode mismatch.
+- For HEPAR2 comb cases, Julia measures `setup`, full Catlab comb `proof`, and finite comb computation. The computation stage uses the direct fast path and skips the optional reconstruction diagnostic.
+- The pyAgrum baseline parses the real HEPAR2 structure from `net/hepar2.net` (`70` nodes and `123` directed edges), verifies that the selected comb variables come from that model, and then runs `causalImpact` on the extracted reduced query-level comb graph.
+- The synthetic joint table is used only for the selected comb variables, so both implementations evaluate the same finite selected-query distribution rather than the original HEPAR2 CPT parameters.
 
 ## Structural Tests
 

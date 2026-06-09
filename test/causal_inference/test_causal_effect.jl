@@ -25,6 +25,21 @@
     @test result.effect.probabilities[:, 1] ≈ [0.74652237, 0.25347763] atol=1e-8
     @test result.effect.probabilities[:, 2] ≈ [0.45770270, 0.54229730] atol=1e-8
 
+    fast = infer_causal_effect(
+        state;
+        A=[:S],
+        B=[:T],
+        C=[:C],
+        validate_reconstruction=false,
+    )
+
+    @test fast.computable
+    @test fast.failure_reason === nothing
+    @test fast.reconstruction_ok
+    @test fast.effect.probabilities ≈ result.effect.probabilities atol=1e-8
+    @test fast.comb === nothing
+    @test fast.reconstructed === nothing
+
     zero_support_probs = copy(probs)
     zero_support_probs[1, 2, 1] = 0.0
     zero_support_probs .*= 1.0 / sum(zero_support_probs)

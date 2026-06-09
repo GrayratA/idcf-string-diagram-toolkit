@@ -1,0 +1,20 @@
+Case,Context,Interventions,Bridge,Outcome,Comb variable count,pyAgrum reduced nodes,Julia warm median ms,pyAgrum warm median ms,pyAgrum / Julia,Faster implementation,Max abs diff,Full effect match
+diabetes_steatosis,,diabetes,obesity,Steatosis,3,3,3.295,2.495,0.76,pyAgrum,0.000e+00,True
+gallstone_injection,,gallstones,choledocholithotomy,injections,3,3,3.286,2.713,0.83,pyAgrum,0.000e+00,True
+steatosis_cirrhosis,,alcoholism; obesity,Steatosis,Cirrhosis,4,4,3.82,4.022,1.05,Julia,0.000e+00,True
+toxic_hepatitis_fatigue,,hepatotoxic; alcoholism,THepatitis,fatigue,4,4,3.658,3.938,1.08,Julia,0.000e+00,True
+toxic_hepatitis_fatigue_context,alcoholism,hepatotoxic,THepatitis,fatigue,4,4,4.402,4.8,1.09,Julia,0.000e+00,True
+pbc_bilirubin,,age; sex,PBC; Hyperbilirubinemia,bilirubin,5,5,5.341,6.545,1.23,Julia,0.000e+00,True
+pbc_bilirubin_context,age,sex,PBC; Hyperbilirubinemia,bilirubin,5,5,4.797,6.636,1.38,Julia,0.000e+00,True
+pbc_inr,,age; sex,PBC; Hyperbilirubinemia,inr,5,5,4.223,6.454,1.53,Julia,0.000e+00,True
+pbc_pressure_ruq,,age; sex,PBC; Hyperbilirubinemia,pressure_ruq,5,5,4.221,6.514,1.54,Julia,0.000e+00,True
+toxic_hepatitis_two_bridge,,hepatotoxic; alcoholism,THepatitis; RHepatitis,fatigue,5,5,4.212,6.319,1.5,Julia,0.000e+00,True
+viral_hbsag,,injections; transfusion; vh_amn,ChHepatitis,hbsag,5,5,4.564,8.856,1.94,Julia,0.000e+00,True
+viral_hbsag_context,vh_amn,injections; transfusion,ChHepatitis,hbsag,5,5,4.558,8.808,1.93,Julia,0.000e+00,True
+hospital_exposure,,hospital; surgery; choledocholithotomy,injections; transfusion,ChHepatitis,6,6,7.807,14.19,1.82,Julia,0.000e+00,True
+hospital_exposure_context,hospital,surgery; choledocholithotomy,injections; transfusion,ChHepatitis,6,6,8.465,14.829,1.75,Julia,0.000e+00,True
+hospital_hbsag,,hospital; surgery; choledocholithotomy,injections; transfusion,hbsag,6,6,6.112,11.815,1.93,Julia,0.000e+00,True
+hospital_hbsag_context,hospital,surgery; choledocholithotomy,injections; transfusion,hbsag,6,6,6.501,13.149,2.02,Julia,0.000e+00,True
+liver_injury_alt,,alcoholism; obesity; hepatotoxic,Steatosis; THepatitis; RHepatitis,alt,7,7,8.587,16.746,1.95,Julia,0.000e+00,True
+liver_injury_alt_context,alcoholism,obesity; hepatotoxic,Steatosis; THepatitis; RHepatitis,alt,7,7,7.784,18.432,2.37,Julia,0.000e+00,True
+liver_injury_ggtp,,alcoholism; obesity; hepatotoxic,Steatosis; THepatitis; RHepatitis,ggtp,7,7,8.11,15.632,1.93,Julia,0.000e+00,True

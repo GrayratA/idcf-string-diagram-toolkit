@@ -30,15 +30,43 @@
         C=[:C],
         intervention=[:S],
     )
+    auto_structure = CombStructure(
+        A=[:S],
+        B=[:T],
+        C=[:C],
+        intervention=[:S],
+    )
+    user_structure = CombStructure(
+        context=Symbol[],
+        intervention=[:S],
+        bridge=[:T],
+        outcome=[:C],
+    )
+    explicit_structure = CombStructure(
+        A=[:S],
+        B=[:T],
+        C=[:C],
+        intervention=[:S],
+        g_boxes=[:f_T],
+        f_boxes=[:f_S, :f_C],
+        cover_all_boxes=true,
+    )
 
     result = infer_causal_effect(diagram, state; witness=witness)
     problem = CausalInferenceProblem(
         diagram;
         variables=[S, T, C],
         probabilities=probs,
-        witness=witness,
+        comb_structure=auto_structure,
     )
     problem_result = infer_causal_effect(problem)
+    user_problem = CausalInferenceProblem(
+        diagram;
+        variables=[S, T, C],
+        probabilities=probs,
+        comb_structure=user_structure,
+    )
+    user_problem_result = infer_causal_effect(user_problem)
     high_level_result = infer_causal_effect(
         diagram;
         variables=[S, T, C],
@@ -47,12 +75,24 @@
         bridge=[:T],
         outcome=[:C],
     )
+    explicit_result = infer_causal_effect(
+        diagram;
+        variables=[S, T, C],
+        probabilities=probs,
+        comb_structure=explicit_structure,
+    )
 
     @test result.computable
     @test problem_result.computable
+    @test user_problem_result.computable
     @test high_level_result.computable
+    @test explicit_result.computable
     @test problem_result.effect.probabilities ≈ result.effect.probabilities
+    @test user_problem_result.effect.probabilities ≈ result.effect.probabilities
     @test high_level_result.effect.probabilities ≈ result.effect.probabilities
+    @test explicit_result.effect.probabilities ≈ result.effect.probabilities
+    @test explicit_result.subdiagram_proof.g_proof.g_boxes == [f_t]
+    @test explicit_result.subdiagram_proof.f_proof.f_boxes == [f_s, f_c]
     @test result.failure_reason === nothing
     @test result.effect.probabilities[:, 1] ≈ [0.74652237, 0.25347763] atol=1e-8
     @test result.effect.probabilities[:, 2] ≈ [0.45770270, 0.54229730] atol=1e-8
@@ -62,6 +102,57 @@
     @test result.subdiagram_proof !== nothing
     @test result.subdiagram_proof.g_proof.g_boxes == [f_t]
     @test result.subdiagram_proof.f_proof.f_boxes == [f_s, f_c]
+
+    bad_structure = CombStructure(
+        A=[:S],
+        B=[:T],
+        C=[:C],
+        intervention=[:S],
+        g_boxes=[:f_C],
+        f_boxes=[:f_S, :f_T],
+    )
+    bad_explicit = infer_causal_effect(
+        diagram;
+        variables=[S, T, C],
+        probabilities=probs,
+        comb_structure=bad_structure,
+    )
+    @test !bad_explicit.computable
+    @test occursin("could not prove g subdiagram", bad_explicit.failure_reason)
+
+    incomplete_structure = CombStructure(
+        A=[:S],
+        B=[:T],
+        C=[:C],
+        intervention=[:S],
+        g_boxes=[:f_T],
+        f_boxes=[:f_C],
+        cover_all_boxes=true,
+    )
+    incomplete = infer_causal_effect(
+        diagram;
+        variables=[S, T, C],
+        probabilities=probs,
+        comb_structure=incomplete_structure,
+    )
+    @test !incomplete.computable
+    @test occursin("expected boundary", incomplete.failure_reason)
+
+    one_sided_structure = CombStructure(
+        A=[:S],
+        B=[:T],
+        C=[:C],
+        intervention=[:S],
+        g_boxes=[:f_T],
+    )
+    one_sided = infer_causal_effect(
+        diagram;
+        variables=[S, T, C],
+        probabilities=probs,
+        comb_structure=one_sided_structure,
+    )
+    @test !one_sided.computable
+    @test occursin("provide both g_boxes and f_boxes", one_sided.failure_reason)
 
     bad_diagram = WiringDiagram([], Any[:S, :C])
     failed = infer_causal_effect(bad_diagram, state; witness=witness)
@@ -226,6 +317,42 @@ end
     @test result.subdiagram_proof !== nothing
 end
 
+@testset "complete comb partition search" begin
+    S = FiniteVariable(:S, [0, 1])
+    T = FiniteVariable(:T, [0, 1])
+    C = FiniteVariable(:C, [0, 1])
+
+    probs = fill(1.0 / 8.0, 2, 2, 2)
+    state = JointState([S, T, C], probs)
+
+    # The valid g-region is S -> Z -> T. Z is an internal diagram-only wire
+    # and is not present in the observational joint table. This forces the
+    # recognizer to find a multi-box g-region rather than only the final T box.
+    diagram = WiringDiagram(Any[:T], Any[:S, :T, :C])
+    f_s = add_box!(diagram, Box(:f_S, Any[], Any[:S]))
+    g_z = add_box!(diagram, Box(:g_Z, Any[:S], Any[:Z]))
+    g_t = add_box!(diagram, Box(:g_T, Any[:Z], Any[:T]))
+    f_c = add_box!(diagram, Box(:f_C, Any[:S, :T], Any[:C]))
+    add_wire!(diagram, Port(f_s, OutputPort, 1) => Port(g_z, InputPort, 1))
+    add_wire!(diagram, Port(g_z, OutputPort, 1) => Port(g_t, InputPort, 1))
+    add_wire!(diagram, Port(f_s, OutputPort, 1) => Port(f_c, InputPort, 1))
+    add_wire!(diagram, Port(input_id(diagram), OutputPort, 1) => Port(f_c, InputPort, 2))
+    add_wire!(diagram, Port(f_s, OutputPort, 1) => Port(output_id(diagram), InputPort, 1))
+    add_wire!(diagram, Port(g_t, OutputPort, 1) => Port(output_id(diagram), InputPort, 2))
+    add_wire!(diagram, Port(f_c, OutputPort, 1) => Port(output_id(diagram), InputPort, 3))
+
+    result = infer_causal_effect(
+        diagram,
+        state;
+        witness=CombWitness(A=[:S], B=[:T], C=[:C], intervention=[:S]),
+    )
+
+    @test result.computable
+    @test result.subdiagram_proof !== nothing
+    @test Set(result.subdiagram_proof.g_proof.g_boxes) == Set([g_z, g_t])
+    @test Set(result.subdiagram_proof.f_proof.f_boxes) == Set([f_s, f_c])
+end
+
 @testset "Catlab comb witness discovery" begin
     S = FiniteVariable(:S, [0, 1])
     T = FiniteVariable(:T, [0, 1])
@@ -338,4 +465,53 @@ end
     @test input_ports(result.surgery_diagram) == Any[:X, :Z]
     @test output_ports(result.surgery_diagram) == Any[:Y]
     @test result.subdiagram_proof !== nothing
+end
+
+@testset "Catlab context-aware comb interface" begin
+    A = FiniteVariable(:A, [0, 1])
+    X = FiniteVariable(:X, [0, 1])
+    B = FiniteVariable(:B, [0, 1])
+    C = FiniteVariable(:C, [0, 1])
+
+    probs = zeros(Float64, 2, 2, 2, 2)
+    for idx in CartesianIndices(probs)
+        a, x, b, c = Tuple(idx) .- 1
+        probs[idx] = 1.0 + 0.7a + 0.5x + 0.3b + 0.2c + 0.4a * b + 0.6x * c
+    end
+    probs ./= sum(probs)
+    state = JointState([A, X, B, C], probs)
+
+    diagram = WiringDiagram(Any[:B], Any[:A, :X, :B, :C])
+    f_a = add_box!(diagram, Box(:f_A, Any[], Any[:A]))
+    f_x = add_box!(diagram, Box(:f_X, Any[:A], Any[:X]))
+    g_b = add_box!(diagram, Box(:g_B, Any[:A, :X], Any[:B]))
+    f_c = add_box!(diagram, Box(:f_C, Any[:A, :X, :B], Any[:C]))
+    add_wire!(diagram, Port(f_a, OutputPort, 1) => Port(f_x, InputPort, 1))
+    add_wire!(diagram, Port(f_a, OutputPort, 1) => Port(g_b, InputPort, 1))
+    add_wire!(diagram, Port(f_x, OutputPort, 1) => Port(g_b, InputPort, 2))
+    add_wire!(diagram, Port(f_a, OutputPort, 1) => Port(f_c, InputPort, 1))
+    add_wire!(diagram, Port(f_x, OutputPort, 1) => Port(f_c, InputPort, 2))
+    add_wire!(diagram, Port(input_id(diagram), OutputPort, 1) => Port(f_c, InputPort, 3))
+    add_wire!(diagram, Port(f_a, OutputPort, 1) => Port(output_id(diagram), InputPort, 1))
+    add_wire!(diagram, Port(f_x, OutputPort, 1) => Port(output_id(diagram), InputPort, 2))
+    add_wire!(diagram, Port(g_b, OutputPort, 1) => Port(output_id(diagram), InputPort, 3))
+    add_wire!(diagram, Port(f_c, OutputPort, 1) => Port(output_id(diagram), InputPort, 4))
+
+    result = infer_causal_effect(
+        diagram,
+        state;
+        intervention=[:X],
+        context=[:A],
+        bridge=[:B],
+        outcome=[:C],
+    )
+
+    @test result.computable
+    @test result.witness.A == [:A, :X]
+    @test result.witness.context == [:A]
+    @test result.witness.intervention == [:X]
+    @test result.effect.inputs == [A, X]
+    @test result.effect.outputs == [C]
+    @test input_ports(result.surgery_diagram) == Any[:A, :X]
+    @test result.subdiagram_proof.g_proof.g_boxes == [g_b]
 end
