@@ -229,11 +229,24 @@ The remaining modules support this pipeline: \texttt{src/bn\_import.jl} and \tex
 \end{figure}
 
 \subsection{Data Structures and Design Decisions}
-The tool is primarily designed for counterfactual identification, but it also supports standard interventional causal queries as special cases. In particular, single-variable and multi-variable interventions can be expressed through the same query interface by specifying intervention variables and target outputs.
+The implementation exposes two interfaces. \texttt{identify\_counterfactual} handles counterfactual identification and returns symbolic probability formulas, whereas \texttt{infer\_causal\_effect} handles comb-disintegration causal inference and returns numerical interventional distributions.
 
 Causal models are described by an \texttt{ADMGModel} (directed and bidirected edge lists), which rootification turns into a \texttt{ConfoundedModel} (directed edges plus a map from each latent root to the variables it confounds). A \texttt{CounterfactualQuery} specifies, per world, the interventions, observations, and output variables. From the simplification stage onwards every state is a Catlab \texttt{WiringDiagram}, and identification proceeds entirely by pattern-matching on box names and rewiring---there is no separate symbolic graph representation. Final expressions are built over a small term language (atomic probability factors, products, sums, and fractions) so that identifiable queries are reported as algebraic formulas matching the output style of existing identification tools, and non-identifiable queries report the stage and box at which absorption failed.
 
 Three decisions characterise the design. First, a \textbf{single diagrammatic representation} is used end to end, so surgery, simplification, and identification are all rewrites on the same object rather than transformations between distinct data models. Second, the pipeline keeps \textbf{every intermediate stage explicit} and exports it to Chyp, making each transformation step inspectable---in contrast to symbolic tools where decomposition and simplification are internal. Third, the stages mirror the theoretical algorithm one-to-one, so each can be tested and optimised independently; the test suite in \texttt{test/} covers ADMG compilation, multiverse construction, simplification, R-fragment partitioning, and expression generation as separate module-level test sets.
+
+\subsection{Comb-Disintegration Causal Inference Extension}
+In addition to counterfactual identification, the prototype includes a scoped causal-inference extension based on comb disintegration. This part of the tool is exposed through \texttt{infer\_causal\_effect}, rather than \texttt{identify\_counterfactual}. The user provides a Catlab string diagram, a finite observational joint distribution, and a comb structure specified by four groups of variables: observed context variables, intervention variables, bridge variables, and outcome variables. The intended query has the form
+\[
+P(C \mid A, \mathrm{do}(X)),
+\]
+where \(A\) denotes optional observed context, \(X\) denotes the intervention variables, \(B\) denotes bridge variables, and \(C\) denotes the outcome variables. Internally, the tool checks whether the supplied diagram admits the required comb decomposition. If this structural check succeeds, the tool computes the interventional distribution numerically from the supplied joint table. 
+
+This extension is demonstrated on a small smoking example and on a larger HEPAR2-based clinical example. In the HEPAR2 case, the user can ask, for example, how chronic hepatitis would be distributed under interventions on hospital-related history, surgery history, and choledocholithotomy, using injections and transfusion as bridge variables. The full HEPAR2 graph is used for structural validation, while the numerical computation currently uses a finite synthetic joint table over the selected variables.
+
+At the current stage, the probability table and the diagram are still separate inputs. The diagram is used to validate that comb disintegration is applicable, while the joint table supplies the numerical probabilities. The reason is practical rather than theoretical: the current implementation treats Catlab diagrams as structural objects, not as executable probabilistic programs. The boxes record names, wires, and dependencies, but they are not yet linked to concrete stochastic matrices. A more complete implementation would attach a stochastic channel to each mechanism box, compose these channels along the diagram, and obtain the observational joint distribution directly from the diagram. Doing this can greatly reduce the cost of table lookup.
+
+
 
 \subsection{Orienting and Running the Tool}
 
@@ -241,6 +254,8 @@ For first-time users, the recommended entry point is \texttt{src/run\_demo.jl}. 
 
 The main inputs are stored in \texttt{examples/admg\_models/}, 
 \texttt{examples/string\_diagrams/}, and \texttt{examples/queries/}. A typical run consists of selecting a model and a matching query, executing \texttt{src/run\_demo.jl}, and inspecting the printed result. Optional trace files under \texttt{trace/} expose intermediate stages of the pipeline, which helps users understand how the tool proceeds through compilation, simplification, and identification.
+
+The comb-disintegration causal-inference examples are stored in \texttt{examples/causal\_inference/}. They use \texttt{infer\_causal\_effect} interface: the user provides a string diagram, a finite observational joint table, and the context/intervention/bridge/outcome variables. The tool validates the selected comb structure and returns a numerical interventional distribution, such as \(P(C \mid \mathrm{do}(S))\) in the smoking example or a HEPAR2-derived chronic-hepatitis effect in the larger clinical example.
 
 \subsection{Worked Example}
 We use a commute scenario as a worked example to illustrate the intermediate representations produced by the implementation. The model describes a daily travel setting with variables \(W,T,M,L,Y\), representing weather, departure time, mode of transport, lateness, and final work performance. 
@@ -325,6 +340,32 @@ The main limitation appears on the heavily confounded \texttt{chain\_bi} family.
 
 
 For correctness we use cross-tool validation. Across all identifiable benchmark queries our tool and \texttt{cfid} return expressions denoting the same interventional/counterfactual distribution (up to ordering and formatting), and both correctly report failure on the non-identifiable queries. Beyond runtime, making string diagrams first-class objects gives the tool a form of \textbf{semantic transparency} absent from symbolic implementations: every transformation step---ADMG compilation, multiverse construction, each simplification pass, and fragment identification---is exported to Chyp and can be inspected, whereas in \texttt{cfid} decomposition and simplification are internal. The use of Catlab and Chyp also connects the implementation to the categorical and diagrammatic-reasoning communities rather than positioning it purely within the causal-inference software ecosystem.
+
+
+\subsection{Comb-Disintegration Causal Inference Benchmarks}
+We also evaluate the comb-disintegration causal-inference extension against pyAgrum, which provides numerical causal-effect computation through \texttt{causalImpact}. This comparison is separate from the ID-CF comparison above: \texttt{cfid} and \texttt{y0} mainly return symbolic identification formulas, whereas the comb-disintegration extension returns concrete numerical interventional distributions.
+
+We use HEPAR2-derived examples where the selected variables form clinically meaningful exposure-outcome patterns. Julia checks the selected variables against the full HEPAR2 diagram and computes the numerical interventional distribution. We then run pyAgrum on the same selected variables and compare the resulting numerical distributions.
+
+The runtime comparison shows that pyAgrum is faster on the smallest selected structures, while Julia becomes more competitive as the selected comb structure grows. In the medium and larger HEPAR2-derived cases, Julia is consistently faster, with speed-ups ranging from roughly \(1.1\times\) to \(2.0\times\). These results indicate that the diagrammatic comb-disintegration workflow can be computationally competitive: despite the additional diagrammatic validation step, the Julia implementation can exploit the selected comb structure rather than solving the effect as a single undifferentiated inference problem. 
+
+\begin{table}[t]
+\centering
+\caption{HEPAR2-derived numerical causal-inference benchmarks grouped by selected comb size. Runtime is the median warm-median runtime within each group. Speedup is pyAgrum runtime divided by Julia runtime.}
+\label{tab:comb-pyagrum}
+\setlength{\tabcolsep}{8pt}
+\begin{tabular}{ccrrr}
+\toprule
+Group & Comb size & Julia (ms) & pyAgrum (ms) & pyAgrum/Julia \\
+\midrule
+$1$ & $3$ & $3.29$ & $2.60$ & $0.79\times$ \\
+$2$ & $4$ & $3.82$ & $4.02$ & $1.05\times$ \\
+$3$ & $5$ & $4.56$ & $6.55$ & $1.44\times$ \\
+$4$ & $6$ & $7.15$ & $13.67$ & $1.91\times$ \\
+$5$ & $7$ & $8.11$ & $16.75$ & $2.06\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Discussion}\label{sec:conclusion}
 
