@@ -54,6 +54,7 @@ end
 
 @testset "causal inference" begin
     include(joinpath(@__DIR__, "causal_inference", "test_finite_stoch.jl"))
+    include(joinpath(@__DIR__, "causal_inference", "test_markov_validation.jl"))
     include(joinpath(@__DIR__, "causal_inference", "test_comb_disintegration.jl"))
     include(joinpath(@__DIR__, "causal_inference", "test_causal_effect.jl"))
     include(joinpath(@__DIR__, "causal_inference", "test_catlab_comb.jl"))

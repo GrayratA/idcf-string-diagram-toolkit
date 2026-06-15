@@ -61,9 +61,9 @@ for idx in CartesianIndices(probs)
     p_transfusion = clamp(p_transfusion, 0.02, 0.94)
 
     hepatitis_raw = [
-        4.0 - 0.35injections - 0.50transfusion - 0.10hospital,
-        0.9 + 0.25injections + 0.25transfusion + 0.05surgery,
-        0.25 + 0.65injections + 0.80transfusion + 0.10chole,
+        4.0 - 0.35injections - 0.50transfusion,
+        0.9 + 0.25injections + 0.25transfusion,
+        0.25 + 0.65injections + 0.80transfusion,
     ]
     hepatitis_dist = hepatitis_raw ./ sum(hepatitis_raw)
 

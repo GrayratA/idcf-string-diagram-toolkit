@@ -162,6 +162,43 @@
     @test failed.surgery_diagram === nothing
 end
 
+@testset "diagram-aware Markov validation in pipeline" begin
+    S = FiniteVariable(:S, [0, 1])
+    T = FiniteVariable(:T, [0, 1])
+    C = FiniteVariable(:C, [0, 1])
+
+    # This table violates S ⟂ C | T for the chain S -> T -> C.
+    probs = zeros(Float64, 2, 2, 2)
+    probs[1, 1, 1] = 0.50
+    probs[1, 1, 2] = 0.10
+    probs[1, 2, 1] = 0.01
+    probs[1, 2, 2] = 0.02
+    probs[2, 1, 1] = 0.10
+    probs[2, 1, 2] = 0.05
+    probs[2, 2, 1] = 0.02
+    probs[2, 2, 2] = 0.20
+    state = JointState([S, T, C], probs)
+
+    diagram = WiringDiagram(Any[:T], Any[:S, :T, :C])
+    f_s = add_box!(diagram, Box(:f_S, Any[], Any[:S]))
+    f_t = add_box!(diagram, Box(:f_T, Any[:S], Any[:T]))
+    f_c = add_box!(diagram, Box(:f_C, Any[:T], Any[:C]))
+    add_wire!(diagram, Port(f_s, OutputPort, 1) => Port(f_t, InputPort, 1))
+    add_wire!(diagram, Port(f_t, OutputPort, 1) => Port(f_c, InputPort, 1))
+    add_wire!(diagram, Port(f_s, OutputPort, 1) => Port(output_id(diagram), InputPort, 1))
+    add_wire!(diagram, Port(f_t, OutputPort, 1) => Port(output_id(diagram), InputPort, 2))
+    add_wire!(diagram, Port(f_c, OutputPort, 1) => Port(output_id(diagram), InputPort, 3))
+
+    result = infer_causal_effect(
+        diagram,
+        state;
+        witness=CombWitness(A=[:S], B=[:T], C=[:C], intervention=[:S]),
+    )
+
+    @test !result.computable
+    @test occursin("Markov validation failed", result.failure_reason)
+end
+
 @testset "subdiagram boundary checker" begin
     wd = WiringDiagram(Any[:S, :Z], Any[:C])
 
@@ -427,24 +464,37 @@ end
     Y = FiniteVariable(:Y, [:bad, :ok, :good])
 
     probs = zeros(Float64, 3, 2, 2, 3)
+    p_x = [0.2, 0.35, 0.45]
+    p_z = [0.55, 0.45]
     for idx in CartesianIndices(probs)
-        x, z, m, y = Tuple(idx)
-        probs[idx] = 0.1 + x + 2z + 3m + 4y
+        x, z, m, y = Tuple(idx) .- 1
+        p_m = clamp(0.2 + 0.15x + 0.25z, 0.05, 0.95)
+        y_weights = [
+            1.0 + 0.1x + 0.2z + 0.1m,
+            1.2 + 0.2x + 0.1z + 0.3m,
+            1.4 + 0.3x + 0.2z + 0.4m,
+        ]
+        y_dist = y_weights ./ sum(y_weights)
+        probs[idx] = p_x[x + 1] *
+                     p_z[z + 1] *
+                     (m == 1 ? p_m : 1.0 - p_m) *
+                     y_dist[y + 1]
     end
     probs ./= sum(probs)
 
     state = JointState([X, Z, M, Y], probs)
     diagram = WiringDiagram(Any[:M], Any[:X, :Z, :M, :Y])
-    f_xz = add_box!(diagram, Box(:f_XZ, Any[], Any[:X, :Z]))
+    f_x = add_box!(diagram, Box(:f_X, Any[], Any[:X]))
+    f_z = add_box!(diagram, Box(:f_Z, Any[], Any[:Z]))
     f_m = add_box!(diagram, Box(:f_M, Any[:X, :Z], Any[:M]))
     f_y = add_box!(diagram, Box(:f_Y, Any[:X, :Z, :M], Any[:Y]))
-    add_wire!(diagram, Port(f_xz, OutputPort, 1) => Port(f_m, InputPort, 1))
-    add_wire!(diagram, Port(f_xz, OutputPort, 2) => Port(f_m, InputPort, 2))
-    add_wire!(diagram, Port(f_xz, OutputPort, 1) => Port(f_y, InputPort, 1))
-    add_wire!(diagram, Port(f_xz, OutputPort, 2) => Port(f_y, InputPort, 2))
+    add_wire!(diagram, Port(f_x, OutputPort, 1) => Port(f_m, InputPort, 1))
+    add_wire!(diagram, Port(f_z, OutputPort, 1) => Port(f_m, InputPort, 2))
+    add_wire!(diagram, Port(f_x, OutputPort, 1) => Port(f_y, InputPort, 1))
+    add_wire!(diagram, Port(f_z, OutputPort, 1) => Port(f_y, InputPort, 2))
     add_wire!(diagram, Port(input_id(diagram), OutputPort, 1) => Port(f_y, InputPort, 3))
-    add_wire!(diagram, Port(f_xz, OutputPort, 1) => Port(output_id(diagram), InputPort, 1))
-    add_wire!(diagram, Port(f_xz, OutputPort, 2) => Port(output_id(diagram), InputPort, 2))
+    add_wire!(diagram, Port(f_x, OutputPort, 1) => Port(output_id(diagram), InputPort, 1))
+    add_wire!(diagram, Port(f_z, OutputPort, 1) => Port(output_id(diagram), InputPort, 2))
     add_wire!(diagram, Port(f_m, OutputPort, 1) => Port(output_id(diagram), InputPort, 3))
     add_wire!(diagram, Port(f_y, OutputPort, 1) => Port(output_id(diagram), InputPort, 4))
     witness = CombWitness(

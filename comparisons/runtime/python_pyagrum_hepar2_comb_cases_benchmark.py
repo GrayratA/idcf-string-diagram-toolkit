@@ -191,7 +191,7 @@ def synthetic_joint(case: Case) -> np.ndarray:
         p_c = 1.0
         for k, c_val in enumerate(c_vals):
             c_weights = np.array(
-                [1.0 + 0.13 * a_score + 0.29 * b_score + 0.19 * (k + 1) + 0.37 * v for v in range(c_dims[k])]
+                [1.0 + 0.29 * b_score + 0.19 * (k + 1) + 0.37 * v for v in range(c_dims[k])]
             )
             p_c *= c_weights[c_val] / c_weights.sum()
 
