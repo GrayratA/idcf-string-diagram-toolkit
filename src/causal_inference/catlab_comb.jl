@@ -1324,6 +1324,21 @@ function infer_causal_effect(
             subdiagram_proof = prove_cut_comb_subdiagrams(wd, state, resolved_witness)
         end
 
+        markov = validate_markov_property(wd, state)
+        if !markov.passed
+            if markov.error !== nothing
+                error("Markov validation failed: $(markov.error)")
+            end
+            details = join(
+                [
+                    "$(f.variable) ⟂ $(f.independent_of) | $(f.given) violated by $(round(f.max_abs_diff; sigdigits=4))"
+                    for f in markov.failures
+                ],
+                "; ",
+            )
+            error("Markov validation failed: $(details)")
+        end
+
         base = infer_causal_effect(
             state;
             A=resolved_witness.A,

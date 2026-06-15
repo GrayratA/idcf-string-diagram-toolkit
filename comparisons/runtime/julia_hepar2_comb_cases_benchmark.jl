@@ -200,7 +200,7 @@ function synthetic_joint(case)
         p_c = 1.0
         for (k, c_val) in enumerate(c_vals)
             dim = c_dims[k]
-            c_weights = [1.0 + 0.13a_score + 0.29b_score + 0.19k + 0.37v for v in 0:(dim - 1)]
+            c_weights = [1.0 + 0.29b_score + 0.19k + 0.37v for v in 0:(dim - 1)]
             p_c *= c_weights[c_val + 1] / sum(c_weights)
         end
 

@@ -170,9 +170,40 @@ Current scope:
 - Basic form: if `context=[]`, the result is `P(outcome | do(intervention))`.
 - Context-aware form: if context variables are provided, the result is `P(outcome | context, do(intervention))`.
 - Structure check: internally the tool builds the comb boundary `A = context ∪ intervention`, identifies the `g` region automatically, treats all remaining internal boxes as the `f` region, and verifies the boundaries `g : A -> B` and `f : B -> A ⊗ C`. It first tries a fast candidate and then falls back to complete finite search over internal box partitions.
+- Markov check: for diagram-aware calls, the tool checks the local Markov property before numerical computation when the supplied joint table contains all non-exogenous diagram variables. If the diagram contains hidden/internal variables that are not in the joint table, this check is skipped because the ordinary DAG Markov property is not valid for the observed marginal alone.
 - Optional override: explicit `g_boxes` and `f_boxes` can still be supplied for debugging or controlled experiments, but they are not the normal interface.
 - Computation: if the structure check succeeds, it computes the corresponding finite causal-effect channel.
 - Output: computability status, the supplied or discovered `A/B/C` witness, readable `g`/`f` subdiagram boxes, the comb decomposition, and the effect channel.
+
+Markov-property validation:
+- A DAG alone is not enough to check the Markov property; the check needs a probability distribution or dataset.
+- In `infer_causal_effect(diagram, joint_state; ...)` and the high-level keyword interface, this check is part of the pipeline when the joint state covers the diagram variables needed for an ordinary DAG Markov check.
+- The current implementation supports finite-discrete validation against the supplied `JointState`.
+- `validate_markov_property(model, joint_state)` checks the local Markov property for DAGs with no bidirected edges.
+- `validate_markov_property(diagram, joint_state)` performs the same check using the DAG extracted from the Catlab diagram when no non-exogenous diagram variables are omitted from the joint state.
+- ADMGs with bidirected edges are rejected by this check, because they require m-separation rather than the ordinary DAG local Markov property.
+
+Minimal Markov check:
+
+```julia
+include("src/admg_compile.jl")
+include("src/causal_inference.jl")
+
+model = ADMGModel([:X => :Y, :Y => :Z], Pair{Symbol,Symbol}[])
+joint = JointState(
+    [
+        FiniteVariable(:X, [0, 1]),
+        FiniteVariable(:Y, [0, 1]),
+        FiniteVariable(:Z, [0, 1]),
+    ],
+    probs,
+)
+
+markov = validate_markov_property(model, joint)
+println("markov passed = ", markov.passed)
+println("failures      = ", markov.failures)
+println("error         = ", markov.error)
+```
 
 Run the smoking scenario:
 

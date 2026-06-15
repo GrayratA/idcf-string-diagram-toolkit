@@ -190,7 +190,10 @@ The causal-inference examples are not counterfactual ID-CF examples. They use `i
 - If there is no context, this reduces to the basic form `P(C | do(X))`.
 - With context, the target is `P(C | A, do(X))`.
 - The tool identifies the `g` region, assigns the remaining internal boxes to `f`, and checks the required comb boundaries. It uses a fast candidate first and then a complete finite search over internal box partitions if needed.
+- The diagram-aware pipeline also checks the local Markov property when the supplied joint table contains all non-exogenous diagram variables. If the example uses a selected-variable marginal with hidden/internal diagram variables omitted, the Markov check is skipped because the ordinary DAG Markov property does not apply to that marginal alone.
 - Explicit `g_boxes` and `f_boxes` are still available as an advanced override, but they are not the default user interface.
 - The joint table is used for the numerical calculation of the corresponding effect channel.
 
 The current implementation does not yet attach stochastic matrices to each box in the string diagram. It also does not compose the diagram to derive the observational joint distribution automatically. This means the examples assume the joint table is already available and compatible with the intended model.
+
+The Markov-property check requires both a graph and a joint distribution; it cannot be performed from the graph alone. The standalone helper `validate_markov_property(model, joint_state)` is also available for ordinary DAGs without bidirected edges.

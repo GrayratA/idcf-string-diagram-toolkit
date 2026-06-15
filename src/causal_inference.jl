@@ -2,6 +2,7 @@ include(joinpath(@__DIR__, "causal_inference", "finite_stoch.jl"))
 include(joinpath(@__DIR__, "causal_inference", "comb_disintegration.jl"))
 include(joinpath(@__DIR__, "causal_inference", "causal_effect.jl"))
 include(joinpath(@__DIR__, "causal_inference", "catlab_comb.jl"))
+include(joinpath(@__DIR__, "causal_inference", "markov_validation.jl"))
 
 """
 Complete input object for the current comb-disintegration causal inference
