@@ -46,6 +46,7 @@ end
     include(joinpath(@__DIR__, "id_cf", "test_step42_collapse_prob_box.jl"))
     include(joinpath(@__DIR__, "id_cf", "test_Rfragements.jl"))
     include(joinpath(@__DIR__, "id_cf", "test_id_cf_general_test.jl"))
+    include(joinpath(@__DIR__, "id_cf", "test_query_canonicalization.jl"))
 end
 
 @testset "id-cf Step5" begin

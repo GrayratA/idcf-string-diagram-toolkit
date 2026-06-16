@@ -8,6 +8,7 @@ using Catlab.WiringDiagrams.DirectedWiringDiagrams
 using Catlab.Programs
 using Catlab.Graphics
 using Catlab.Graphics: Graphviz, to_graphviz
+include(joinpath(@__DIR__, "cf_normalization.jl"))
 # Splitting R-fragment
 
 function find_r_fragments(wd::WiringDiagram)
@@ -1724,6 +1725,56 @@ function _infer_display_syms(
     return display
 end
 
+function _sorted_pairs_key(d::Dict{Symbol,Symbol})
+    isempty(d) && return ""
+    return join(["$(k)=$(v)" for (k, v) in sort(collect(d); by=x -> string(x[1]))], "|")
+end
+
+function _sorted_symbols_key(xs)
+    isempty(xs) && return ""
+    return join(string.(sort(collect(xs))), "|")
+end
+
+function _query_sort_key(q::CounterfactualQuery)
+    role =
+        !isempty(q.outputs) ? 1 :
+        isempty(q.interventions) && !isempty(q.observations) ? 2 :
+        !isempty(q.interventions) && !isempty(q.observations) ? 3 :
+        4
+    return (
+        role,
+        _sorted_pairs_key(q.interventions),
+        _sorted_pairs_key(q.observations),
+        _sorted_symbols_key(q.outputs),
+        string(q.world_name),
+    )
+end
+
+function _merge_observation!(obs::Dict{Symbol,Symbol}, var::Symbol, val::Symbol)
+    if haskey(obs, var) && obs[var] != val
+        error("Conflicting observations for $(var): $(obs[var]) and $(val)")
+    end
+    obs[var] = val
+    return obs
+end
+
+"""
+Canonicalize counterfactual queries before building the multiverse diagram.
+
+The mathematical query is a conjunction of counterfactual events, so its
+semantics should not depend on the user-provided vector order or world labels.
+The current diagram pipeline is more stable when target/output worlds are built
+first, followed by factual evidence and then interventional evidence. This
+function applies that canonical ordering and merges compatible evidence worlds.
+"""
+function canonicalize_counterfactual_queries(queries::Vector{CounterfactualQuery}; model_or_base=nothing)
+    normalized = normalize_counterfactual_query(model_or_base, queries)
+    if !isempty(normalized.contradictions)
+        error("Counterfactual query contradiction: " * join(normalized.contradictions, "; "))
+    end
+    return normalized.queries
+end
+
 function _trace_filename(prefix::String, idx::Int, stage::String)
     base = lpad(string(idx), 2, '0') * "_" * stage * ".chyp"
     return isempty(prefix) ? base : prefix * "_" * base
@@ -1833,7 +1884,7 @@ Output (NamedTuple):
 - `identifiable`: whether Step 4 succeeded.
 - `formula_available`: whether Step 5 produced a formula.
 - `raw_tex` / `simplified_tex` / `data_tex`: rendered expressions (or `nothing`).
-- `failure_stage`: `nothing`, `:build`, `:simplify`, `:step4`, or `:step5`.
+- `failure_stage`: `nothing`, `:normalize`, `:build`, `:simplify`, `:step4`, or `:step5`.
 - `error`: error string when failed.
 - `step3_blockers`: unabsorbed lambda-box names before Step 4.
 - `base_scm`, `wd`: intermediate diagrams.
@@ -1908,6 +1959,17 @@ function identify_counterfactual(
         )
     end
 
+    canonical_queries = try
+        canonicalize_counterfactual_queries(queries; model_or_base=model_or_base)
+    catch err
+        failure_stage = :normalize
+        error_msg = sprint(showerror, err)
+        return finalize()
+    end
+
+    inferred_display = _infer_display_syms(canonical_queries, output_vars_str)
+    display_var = union(Set(display_syms), inferred_display)
+
     build_t0 = time_ns()
     try
         base_scm = _resolve_base_scm_input(model_or_base, display_var)
@@ -1919,7 +1981,7 @@ function identify_counterfactual(
             name="base_scm",
         )
 
-        wd = build_multiverse(base_scm, queries)
+        wd = build_multiverse(base_scm, canonical_queries)
         _maybe_write_trace!(
             trace_paths,
             trace_dir,
@@ -2006,7 +2068,7 @@ function identify_counterfactual(
             wd;
             output_vars=output_vars_str,
             simplify=simplify,
-            queries=queries,
+            queries=canonical_queries,
             display=display,
             latent=latent,
             rules=rules,
