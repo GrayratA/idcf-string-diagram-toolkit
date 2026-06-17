@@ -18,11 +18,14 @@ gamma <- conj(
   cf(var = "Y", obs = y_obs, sub = c(T = t_do))
 )
 
-delta <- conj(
-  cf(var = "W", obs = w_obs),
-  cf(var = "T", obs = t_obs),
-  cf(var = "M", obs = m_obs, sub = c(W = w_obs))
-)
+vW <- cf(var = "W", obs = w_obs)
+vT <- cf(var = "T", obs = t_obs)
+vM <- cf(var = "M", obs = m_obs, sub = c(W = w_obs))
+
+# cfid 0.1.9 is order-sensitive for conditional conjunctions where a factual
+# event also appears as an intervention value in another event. Put M_w before
+# the matching factual W=w.
+delta <- conj(vM, vW, vT)
 
 res <- identifiable(g, gamma, delta, data = "interventions")
 

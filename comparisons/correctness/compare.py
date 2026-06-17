@@ -126,7 +126,7 @@ def main():
         lines.append("| %s | %s | %s |" % (cid, jv, describe(cases[cid])))
     lines.append("")
 
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 
     # ---- console summary ----

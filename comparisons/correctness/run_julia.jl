@@ -38,13 +38,14 @@ include(joinpath(ROOT, "src", "id_cf.jl"))
 # data-type) and does NOT depend on how events are grouped into "worlds". We use
 # a simple, mechanical grouping that matches the hand-written drug/party examples:
 #
-#   * one "Real" world holding every evidence event with an empty do-context
-#     (these are plain observations);
-#   * one world per evidence event that carries a do-context;
-#   * one world per target event, with the target variable placed in `outputs`.
+#   * one world per distinct intervention context;
+#   * all evidence events with that same context are placed in that world's
+#     observation dictionary;
+#   * all target events with that same context are placed in that world's
+#     `outputs`.
 #
-# If the toolkit's verdict were sensitive to this grouping, that would itself be
-# a defect worth surfacing -- which is exactly what the differential test does.
+# This matches the usual counterfactual notation: events with the same subscript
+# belong to the same counterfactual world.
 # --------------------------------------------------------------------------
 
 function build_admg(case)
@@ -54,36 +55,51 @@ function build_admg(case)
 end
 
 function build_queries(case)
-    worlds = CounterfactualQuery[]
+    ctx_key(ctx) = Tuple(sort!(collect(ctx); by = p -> string(p.first)))
+
+    groups = Dict{Any,NamedTuple}()
+    order = Any[]
+
+    function group_for!(ctx)
+        key = ctx_key(ctx)
+        if !haskey(groups, key)
+            groups[key] = (
+                ctx = Dict{Symbol,Symbol}(ctx),
+                obs = Dict{Symbol,Symbol}(),
+                outputs = Symbol[],
+            )
+            push!(order, key)
+        end
+        return groups[key]
+    end
 
     # `ctx` is the intervention context (named `do` in the JSON/R corpus, but
     # `do` is a reserved keyword in Julia so the .jl literal uses `ctx`).
-    real_obs = Dict{Symbol,Symbol}()
     for e in case.evidence
-        if isempty(e.ctx)
-            real_obs[e.var] = e.val
-        end
-    end
-    if !isempty(real_obs)
-        push!(worlds, CounterfactualQuery(:Real, Dict{Symbol,Symbol}(), real_obs, Symbol[]))
+        group_for!(e.ctx).obs[e.var] = e.val
     end
 
-    wcount = 0
-    for e in case.evidence
-        if !isempty(e.ctx)
-            wcount += 1
-            push!(worlds, CounterfactualQuery(Symbol("Ev", wcount),
-                                              Dict(e.ctx), Dict(e.var => e.val), Symbol[]))
-        end
-    end
-
-    tcount = 0
     for t in case.target
-        tcount += 1
-        push!(worlds, CounterfactualQuery(Symbol("T", tcount),
-                                          Dict(t.ctx), Dict{Symbol,Symbol}(), [t.var]))
+        push!(group_for!(t.ctx).outputs, t.var)
     end
 
+    worlds = CounterfactualQuery[]
+    wcount = 0
+    for key in order
+        g = groups[key]
+        name = if isempty(g.ctx)
+            :Real
+        else
+            wcount += 1
+            Symbol("W", wcount)
+        end
+        push!(worlds, CounterfactualQuery(
+            name,
+            Dict{Symbol,Symbol}(g.ctx),
+            Dict{Symbol,Symbol}(g.obs),
+            unique(g.outputs),
+        ))
+    end
     return worlds
 end
 

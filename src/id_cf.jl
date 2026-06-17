@@ -96,19 +96,15 @@ function handle_case1_for_var!(
 
     cX = first(cX_boxes)
 
-    # Collect all X-type wires within the fragment
-    X_wires = Wire[]
+    # Collect all X-type input wires in the fragment whose value is not supplied
+    # by cX itself. In id-cf step 4.1.1, wires copied out of cX are the agreeing
+    # value; only independent X wires need to be justified by the same sharp
+    # state, or else the fragment is not identifiable.
+    X_inputs_not_from_cX = Wire[]
     for b in frag_boxes
-        # in port
         for w in in_wires(wd, b)
-            if port_value(wd, w.target) == var_type
-                push!(X_wires, w)
-            end
-        end
-        # out port
-        for w in out_wires(wd, b)
-            if port_value(wd, w.source) == var_type
-                push!(X_wires, w)
+            if port_value(wd, w.target) == var_type && w.source.box != cX
+                push!(X_inputs_not_from_cX, w)
             end
         end
     end
@@ -127,10 +123,10 @@ function handle_case1_for_var!(
 
     #   Case 1.a
     if !has_effect
-        # Output of cX has no sharp effect
-        # Check: whether there is only this one/few X-shaped lines in the fragment (that is, these outputs of cX)
-        if length(X_wires) == length(cX_out_X_wires) &&
-           all(w -> w in X_wires, cX_out_X_wires)
+        # Output of cX has no sharp effect. This is acceptable exactly when
+        # every X input in the fragment is copied from cX itself; otherwise
+        # there is an additional X value whose agreement is not witnessed.
+        if isempty(X_inputs_not_from_cX)
             return :case1a_do_nothing
         end
         # else FAIL
@@ -141,24 +137,12 @@ function handle_case1_for_var!(
 
         state_sources = Int[]  # record sharp state boxs' id
 
-        for b in frag_boxes
-            for w in in_wires(wd, b)
-                if port_value(wd, w.target) == var_type
-                    src_box = w.source.box
-
-                    # If the output of cX comes from cX itself, skip
-                    if src_box == cX
-                        continue
-                    end
-
-                    # If the source is a sharp state, then make a note of it
-                    if is_sharp_state(wd, src_box)
-                        push!(state_sources, src_box)
-                    else
-                        # fail
-                        error("FAIL (case1, var=$(var_type)): X-input not from cX or sharp state")
-                    end
-                end
+        for w in X_inputs_not_from_cX
+            src_box = w.source.box
+            if is_sharp_state(wd, src_box)
+                push!(state_sources, src_box)
+            else
+                error("FAIL (case1, var=$(var_type)): X-input not from cX or sharp state")
             end
         end
 
@@ -202,8 +186,10 @@ function handle_case1_for_var!(
                 WD.rem_wire!(wd, w)
             end
 
-            # Delete this sharp state box itself (doX is no longer needed in this fragment)
-            WD.rem_box!(wd, state_box)
+            # Do not delete the sharp-state box here. Catlab renumbers boxes on
+            # `rem_box!`, while Step 4 intentionally reuses fragment box ids
+            # computed before rewriting. The disconnected state is removed by
+            # `remove_lonely_boxes!` after all fragments have been collapsed.
 
             # Find the X-type output port index of cX
             x_out_ports = Int[]
@@ -306,11 +292,9 @@ function handle_case2_for_var!(
                 WD.add_wire!(wd, (keep, 1) => (tgt.box, tgt.port))
             end
 
-            # remove extra sharp state boxes (delete in descending id order is safer)
-            extras = sort([s for s in unique_srcs if s != keep], rev=true)
-            for s in extras
-                WD.rem_box!(wd, s)
-            end
+            # Do not delete extra sharp-state boxes here. Removing boxes during
+            # Step 4.1 invalidates the precomputed R-fragment ids. Once their
+            # outgoing wires are removed, they are cleaned up after Step 4.2.
 
 
             return :case2b_rewritten
@@ -962,6 +946,82 @@ function rule_eliminate_sum_normalized!(prod::CFProd, sumvars::Vector{String})
     end
 
     return CFProd(CFExpr[a for a in atoms]), sumvars
+end
+
+function atom_key(a::CFAtom)
+    return (
+        left=Tuple(a.left),
+        dovars=Tuple(a.dovars),
+        left_disp=Tuple(a.left_disp),
+        do_disp=Tuple(a.do_disp),
+    )
+end
+
+function atom_mentions_any(a::CFAtom, vars::Set{String})
+    any(v -> v in vars, a.left) ||
+        any(v -> v in vars, a.dovars) ||
+        any(v -> v in vars, a.left_disp) ||
+        any(v -> v in vars, a.do_disp)
+end
+
+"""
+Cancel multiplicative factors that appear both in the denominator and in the
+body of a numerator sum, provided the factor is independent of the sum index.
+
+Example:
+  Σ_w A B(w) / (A C)  ->  Σ_w B(w) / C
+"""
+function cancel_common_factors(fr::CFFrac)::CFFrac
+    num_sumvars = Set{String}()
+    num_body = fr.num
+    if fr.num isa CFSum
+        ns = fr.num::CFSum
+        # Sum variables are printed tokens. The current display maps variable
+        # names to these tokens, so compare against both structural and printed
+        # fields through atom_mentions_any only when the structural names match.
+        num_sumvars = Set(ns.vars)
+        num_body = ns.body
+    end
+
+    num_prod = _to_prod(num_body)
+    den_prod = _to_prod(fr.den)
+    num_terms = copy(num_prod.terms)
+    den_terms = copy(den_prod.terms)
+
+    changed = false
+    i = 1
+    while i <= length(num_terms)
+        t = num_terms[i]
+        if !(t isa CFAtom)
+            i += 1
+            continue
+        end
+        a = t::CFAtom
+        # Only cancel factors that do not depend on the summation token.
+        if atom_mentions_any(a, num_sumvars)
+            i += 1
+            continue
+        end
+
+        j = findfirst(den_terms) do u
+            u isa CFAtom && atom_key(u::CFAtom) == atom_key(a)
+        end
+        if j === nothing
+            i += 1
+            continue
+        end
+
+        deleteat!(num_terms, i)
+        deleteat!(den_terms, j)
+        changed = true
+    end
+
+    changed || return fr
+
+    new_num_body = CFProd(num_terms)
+    new_den = CFProd(den_terms)
+    new_num = fr.num isa CFSum ? CFSum((fr.num::CFSum).vars, new_num_body) : new_num_body
+    return CFFrac(new_num, new_den)
 end
 
 
@@ -1655,8 +1715,9 @@ function id_cf_step5(
     raw_expr = event_mode ? num_expr : CFFrac(num_expr, den_expr)
     raw_tex  = cf_latex(raw_expr)
 
-    simp_expr = raw_expr
+    simp_expr = raw_expr isa CFFrac ? cancel_common_factors(raw_expr::CFFrac) : raw_expr
     simp_tex  = raw_tex
+    simp_tex = cf_latex(simp_expr)
 
     zv = data.mix_target_var
     z_sym = get(var2sym, zv, lowercase(zv))
@@ -1664,9 +1725,9 @@ function id_cf_step5(
     if event_mode || data.mode == :none
         data_expr = simp_expr
     elseif data.mode == :conditional_queries
-        simp_expr isa CFFrac || error("id_cf_step5: :conditional_queries requires a fractional expression")
+        raw_expr isa CFFrac || error("id_cf_step5: :conditional_queries requires a fractional expression")
         data_expr = rewrite_conditional_queries(
-            simp_expr::CFFrac,
+            raw_expr::CFFrac,
             factors,
             fixed_obs,
             fixed_do,
@@ -1678,7 +1739,7 @@ function id_cf_step5(
         )
     else
         data_expr = rewrite_for_data(
-            simp_expr;
+            raw_expr;
             data_mode=data.mode,
             mix_var=data.mix_var,
             mix_sym=data.mix_sym,
@@ -1725,6 +1786,38 @@ function _infer_display_syms(
     return display
 end
 
+function _observed_vars_for_id_cf(model_or_base, fallback::Set{Symbol})::Set{Symbol}
+    if model_or_base isa ADMGModel
+        vars = Set{Symbol}()
+        for e in model_or_base.directed
+            push!(vars, e.first)
+            push!(vars, e.second)
+        end
+        for e in model_or_base.bidirected
+            push!(vars, e.first)
+            push!(vars, e.second)
+        end
+        return vars
+    elseif model_or_base isa ConfoundedModel
+        vars = Set{Symbol}()
+        roots = Set(keys(model_or_base.latents))
+        for e in model_or_base.directed
+            e.first in roots || push!(vars, e.first)
+            e.second in roots || push!(vars, e.second)
+        end
+        for children in values(model_or_base.latents)
+            for child in children
+                child in roots || push!(vars, child)
+            end
+        end
+        return vars
+    end
+
+    # Raw string/wiring-diagram inputs do not expose the ADMG observed-node set.
+    # In that case fall back to the query/display variables.
+    return Set(fallback)
+end
+
 function _sorted_pairs_key(d::Dict{Symbol,Symbol})
     isempty(d) && return ""
     return join(["$(k)=$(v)" for (k, v) in sort(collect(d); by=x -> string(x[1]))], "|")
@@ -1768,7 +1861,11 @@ first, followed by factual evidence and then interventional evidence. This
 function applies that canonical ordering and merges compatible evidence worlds.
 """
 function canonicalize_counterfactual_queries(queries::Vector{CounterfactualQuery}; model_or_base=nothing)
-    normalized = normalize_counterfactual_query(model_or_base, queries)
+    normalized = normalize_counterfactual_query(
+        model_or_base,
+        queries;
+        apply_consistency=true,
+    )
     if !isempty(normalized.contradictions)
         error("Counterfactual query contradiction: " * join(normalized.contradictions, "; "))
     end
@@ -1932,6 +2029,7 @@ function identify_counterfactual(
     output_vars_str = String.(output_vars)
     inferred_display = _infer_display_syms(queries, output_vars_str)
     display_var = union(Set(display_syms), inferred_display)
+    id_vars = Set{Symbol}()
 
     finalize = () -> begin
         total_ms = (time_ns() - total_t0) / 1e6
@@ -1969,6 +2067,7 @@ function identify_counterfactual(
 
     inferred_display = _infer_display_syms(canonical_queries, output_vars_str)
     display_var = union(Set(display_syms), inferred_display)
+    id_vars = _observed_vars_for_id_cf(model_or_base, display_var)
 
     build_t0 = time_ns()
     try
@@ -2045,7 +2144,7 @@ function identify_counterfactual(
 
     step4_t0 = time_ns()
     try
-        id_cf_step4!(wd, display_var; verbose=step4_verbose)
+        id_cf_step4!(wd, id_vars; verbose=step4_verbose)
         identifiable = true
         _maybe_write_trace!(
             trace_paths,

@@ -175,9 +175,9 @@ end
     expected_lines = [
         "---- Step 4.1 on R-fragment #1 ----",
         "Fragment 1, var Z, case2 = case2b_rewritten",
-        "Fragment 1, var W, case2 = skip_no_X_input",
+        "Fragment 1, var W, case2 = case2a_do_nothing",
         "Fragment 1, var X, case1 = case1b_detected",
-        "Fragment 1, var Y, case2 = skip_no_X_input",
+        "Fragment 1, var Y, case1 = case1a_do_nothing",
         "---- Step 4.1 on R-fragment #2 ----",
         "Fragment 2, var W, case1 = case1a_do_nothing",
         "Fragment 2, var X, case2 = case2b_rewritten",

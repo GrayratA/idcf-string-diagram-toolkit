@@ -10,14 +10,20 @@
 #     <id> \t <verdict> \t <formula-or-note>
 # where <verdict> is ID, FAIL, or ERROR (cfid raised for a non-verdict reason).
 #
-# The concrete observed values do not affect identifiability (it is a structural
-# property), so every event is encoded at integer level 0; only the variable and
-# its intervention context matter.
+# Counterfactual values must be preserved. In cfid, `obs` and intervention
+# values in `sub` are integer levels, so distinct value tokens such as `x` and
+# `xt` must be mapped to distinct levels for the same variable. Otherwise
+# consistency can incorrectly collapse queries such as P(Y_x | X=x') into
+# P(Y_x | X=x).
 #
 # Usage:
 #     Rscript run_cfid.R corpus.R verdicts_cfid.tsv
 
 suppressMessages(library(cfid))
+
+if (packageVersion("cfid") < "0.1.9") {
+  stop("cfid >= 0.1.9 is required for this correctness harness")
+}
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) stop("usage: Rscript run_cfid.R <corpus.R> <out.tsv>")
@@ -38,25 +44,69 @@ build_dag <- function(case) {
   dag(paste(edges, collapse = "; "))
 }
 
+# Build a per-variable value-token map for one case.
+#
+# The corpus stores symbolic values (`x`, `xt`, `v2`, ...). cfid expects integer
+# levels. The mapping is local to each variable: the same token for the same
+# variable gets the same level, while distinct tokens for that variable get
+# distinct levels.
+build_value_levels <- function(case) {
+  levels <- list()
+
+  add_value <- function(var, val) {
+    if (is.null(levels[[var]])) {
+      levels[[var]] <<- list()
+    }
+    key <- as.character(val)
+    if (is.null(levels[[var]][[key]])) {
+      levels[[var]][[key]] <<- length(levels[[var]])
+    }
+  }
+
+  for (ev in c(case$target, case$evidence)) {
+    add_value(ev$var, ev$val)
+    if (length(ev$do) > 0) {
+      for (v in names(ev$do)) {
+        add_value(v, ev$do[[v]])
+      }
+    }
+  }
+
+  levels
+}
+
+level_of <- function(levels, var, val) {
+  key <- as.character(val)
+  if (is.null(levels[[var]]) || is.null(levels[[var]][[key]])) {
+    stop(sprintf("no cfid level for %s=%s", var, key))
+  }
+  as.integer(levels[[var]][[key]])
+}
+
 # Build one cfid counterfactual event `cf(var, obs, sub)` from an event record.
-build_cf <- function(ev) {
+build_cf <- function(ev, levels) {
+  obs <- level_of(levels, ev$var, ev$val)
   if (length(ev$do) == 0) {
-    cf(var = ev$var, obs = 0L)
+    cf(var = ev$var, obs = obs)
   } else {
-    sub <- setNames(rep(0L, length(ev$do)), names(ev$do))
-    cf(var = ev$var, obs = 0L, sub = sub)
+    sub <- setNames(
+      vapply(names(ev$do), function(v) level_of(levels, v, ev$do[[v]]), integer(1)),
+      names(ev$do)
+    )
+    cf(var = ev$var, obs = obs, sub = sub)
   }
 }
 
-build_conj <- function(events) {
-  do.call(conj, lapply(events, build_cf))
+build_conj <- function(events, levels, case) {
+  do.call(conj, lapply(events, build_cf, levels = levels))
 }
 
 run_case <- function(case) {
   res <- tryCatch({
     g <- build_dag(case)
-    gamma <- build_conj(case$target)
-    delta <- build_conj(case$evidence)
+    levels <- build_value_levels(case)
+    gamma <- build_conj(case$target, levels, case)
+    delta <- build_conj(case$evidence, levels, case)
     identifiable(g, gamma, delta, data = case$data)
   }, error = function(e) e)
 

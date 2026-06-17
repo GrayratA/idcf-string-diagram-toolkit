@@ -29,6 +29,28 @@ function _cf_directed_edges(model_or_base)
     return Pair{Symbol,Symbol}[]
 end
 
+function _cf_latent_signatures(model_or_base, mech_vars::Set{Symbol})
+    sigs = Set{Any}()
+
+    if model_or_base isa ADMGModel
+        for e in model_or_base.bidirected
+            a, b = e.first, e.second
+            if a in mech_vars || b in mech_vars
+                lo, hi = string(a) <= string(b) ? (a, b) : (b, a)
+                push!(sigs, (:bidirected, lo, hi))
+            end
+        end
+    elseif model_or_base isa ConfoundedModel
+        for (root, children) in model_or_base.latents
+            if any(v -> v in mech_vars, children)
+                push!(sigs, (:latent, root))
+            end
+        end
+    end
+
+    return sigs
+end
+
 function _cf_ancestors(edges::Vector{Pair{Symbol,Symbol}}, var::Symbol)
     parents = Dict{Symbol,Vector{Symbol}}()
     for e in edges
@@ -44,6 +66,69 @@ function _cf_ancestors(edges::Vector{Pair{Symbol,Symbol}}, var::Symbol)
         append!(stack, get(parents, v, Symbol[]))
     end
     return seen
+end
+
+function _cf_mechanism_dependencies(
+    edges::Vector{Pair{Symbol,Symbol}},
+    var::Symbol,
+    ctx::Dict{Symbol,Symbol},
+)
+    # In the mutilated graph for a potential outcome, intervened variables are
+    # constants. The event can depend on the mechanisms/noises of the outcome
+    # and its non-intervened directed ancestors, but not on mechanisms upstream
+    # of an intervened variable.
+    var in keys(ctx) && return Set{Symbol}()
+
+    parents = Dict{Symbol,Vector{Symbol}}()
+    for e in edges
+        push!(get!(parents, e.second, Symbol[]), e.first)
+    end
+
+    deps = Set{Symbol}()
+    stack = Symbol[var]
+    while !isempty(stack)
+        v = pop!(stack)
+        v in deps && continue
+        v in keys(ctx) && continue
+        push!(deps, v)
+        for p in get(parents, v, Symbol[])
+            p in keys(ctx) || push!(stack, p)
+        end
+    end
+    return deps
+end
+
+function _cf_dependency_signature(model_or_base, e::CFEvent)
+    if !(model_or_base isa ADMGModel || model_or_base isa ConfoundedModel)
+        return Set{Any}()
+    end
+
+    directed_edges = _cf_directed_edges(model_or_base)
+    mech_vars = _cf_mechanism_dependencies(directed_edges, e.var, e.context)
+    sig = Set{Any}((:mechanism, v) for v in mech_vars)
+    union!(sig, _cf_latent_signatures(model_or_base, mech_vars))
+    return sig
+end
+
+function _cf_prune_irrelevant_evidence(model_or_base, gamma::Vector{CFEvent}, delta::Vector{CFEvent})
+    if !(model_or_base isa ADMGModel || model_or_base isa ConfoundedModel)
+        return delta
+    end
+
+    target_sig = Set{Any}()
+    for e in gamma
+        union!(target_sig, _cf_dependency_signature(model_or_base, e))
+    end
+    isempty(target_sig) && return delta
+
+    kept = CFEvent[]
+    for e in delta
+        sig = _cf_dependency_signature(model_or_base, e)
+        if !isempty(intersect(target_sig, sig))
+            push!(kept, e)
+        end
+    end
+    return kept
 end
 
 function _cf_events_from_queries(queries::Vector{CounterfactualQuery})
@@ -197,6 +282,7 @@ function normalize_counterfactual_query(
     queries::Vector{CounterfactualQuery};
     apply_consistency::Bool=false,
     reduce_interventions::Bool=true,
+    prune_irrelevant_evidence::Bool=true,
 )
     gamma, delta = _cf_events_from_queries(queries)
     factual, contradictions = _cf_factual_observations(delta)
@@ -232,6 +318,10 @@ function normalize_counterfactual_query(
     append!(contradictions, errs)
     norm_delta, errs = _cf_merge_events(norm_delta)
     append!(contradictions, errs)
+
+    if prune_irrelevant_evidence
+        norm_delta = _cf_prune_irrelevant_evidence(model_or_base, norm_gamma, norm_delta)
+    end
 
     return NormalizedCFQuery(
         norm_gamma,

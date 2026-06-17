@@ -82,7 +82,7 @@ Each **case** is a counterfactual identification problem:
   "id": "drug",
   "directed":   [["X","W"],["W","Y"],["D","Z"],["Z","Y"]],
   "bidirected": [["X","Y"]],                 // latent confounding
-  "data": "interventions",                    // or "observations"
+  "data": "interventions",
   "target":   [{"var":"Y","val":"y","do":{"X":"x"}}],          // γ
   "evidence": [{"var":"X","val":"xt","do":{}},                 // δ
                {"var":"D","val":"d","do":{}},
@@ -98,14 +98,32 @@ the world where the `do` variables are intervened". This maps directly onto:
 * **the toolkit**: a list of `CounterfactualQuery` worlds passed to
   `identify_counterfactual(...)`, whose `.identifiable` field is the verdict.
 
+This harness uses `data = "interventions"` for every generated case. That is
+intentional: the toolkit currently targets the Section-8 ID-CF setting, where
+counterfactuals are identified from the interventional distribution family
+`P_*(O)`. Testing `data = "observations"` would additionally test causal-effect
+identification from purely observational data, which is outside the current
+counterfactual-identification pipeline.
+
+The generator also filters out cases that reduce, after consistency and
+irrelevance checks, to a single ordinary interventional distribution
+`P(Y | Z; do(X))`. Those cases are identifiable directly from `P_*(O)` by
+definition, so they test ordinary interventional access rather than genuine
+cross-world counterfactual identification. The corpus therefore focuses on
+queries whose target and evidence cannot be embedded into one intervention
+world.
+
 The corpus is **reproducible** (seeded RNG) and mixes:
 
-* **structured cases** — the classic `drug` (identifiable from interventions) and
-  `party` (identifiable from observations) examples, plus the four synthetic
-  efficiency-benchmark families at small sizes;
-* **random cases** — seeded random ADMGs of varying size and edge density,
-  including bidirected (confounding) edges that produce genuine non-identifiable
-  queries, so the *FAIL* side is exercised too.
+* **structured cases** — the classic `drug` and `party` examples, plus the four
+  synthetic efficiency-benchmark families at small sizes, all run in the
+  interventional-data setting;
+* **random cases** — seeded random bow-free ADMGs over 5--8 nodes, with isolated
+  nodes filtered out. For each graph the generator builds a natural
+  single-target conditional counterfactual query with a small evidence set, then
+  rejects candidates that are single-world reducible. The random corpus is
+  intentionally broad enough to expose disagreement/error cases while staying
+  within the intended counterfactual-identification scope.
 
 ---
 
@@ -115,12 +133,12 @@ The corpus is **reproducible** (seeded RNG) and mixes:
 | --- | --- |
 | `gen_corpus.py`, `compare.py` | Python 3 (standard library only) |
 | `run_julia.jl` | Julia + this repo's project deps (`julia --project=<repo-root> -e 'using Pkg; Pkg.instantiate()'`) |
-| `run_cfid.R` | R + the `cfid` package (`install.packages("cfid")`) |
+| `run_cfid.R` | R + `cfid >= 0.1.9` (`install.packages("cfid")`) |
 
-> Note: this harness was authored without Julia/R available in the authoring
-> environment, so the Python pieces are tested but the `run_julia.jl` /
-> `run_cfid.R` runners have **not yet been executed**. The first run on a machine
-> with the full toolchain may need minor fixes (see "First-run checklist").
+The default generated corpus contains 10 structured cases plus 300 random
+ADMG/query cases over 5--8 nodes. Earlier `cfid` versions should not be used for
+this harness; `cfid 0.1.8` is known to misclassify some rare generated queries
+that `0.1.9` fixes.
 
 ---
 
@@ -128,13 +146,13 @@ The corpus is **reproducible** (seeded RNG) and mixes:
 
 ```bash
 # from this directory
-./run_all.sh 60 1          # 60 random cases, RNG seed 1
+./run_all.sh 300 1         # 300 random cases, RNG seed 1
 ```
 
 or step by step:
 
 ```bash
-python3 gen_corpus.py --n 60 --seed 1 --out .
+python3 gen_corpus.py --n 300 --seed 1 --min-random-n 5 --max-random-n 8 --out .
 julia --project=../.. run_julia.jl corpus.jl verdicts_julia.tsv
 Rscript run_cfid.R corpus.R verdicts_cfid.tsv
 python3 compare.py corpus.json verdicts_julia.tsv verdicts_cfid.tsv report.md
@@ -205,13 +223,11 @@ wired correctly, both tools should return ID for them.
 ## Extending
 
 * **More queries per graph** — `gen_corpus.py:natural_query` currently builds one
-  target + a small evidence set. Generalise it to multi-target γ or richer δ.
+  target plus a small evidence set for each random graph. Generalise it to
+  multi-target γ or richer δ once the toolkit supports those classes robustly.
 * **Numerical estimand equivalence** — the natural next layer: parameterise each
   identifiable SCM, evaluate both tools' estimands, and assert equal numbers.
   This upgrades "same verdict" to "same answer".
-* **`y0` as a second oracle** — `comparisons/runtime/python_y0_benchmark.py` shows
-  how to read an ID/FAIL verdict out of `y0.algorithm.identify.idc_star`. Adding a
-  `run_y0.py` runner and a three-way comparison strengthens the result further.
 * **Markov-property validation** — orthogonal to identification, but the other
   open gap: check that the generated/benchmark DAGs admit a Markov factorisation
   before they are used for numerical experiments.

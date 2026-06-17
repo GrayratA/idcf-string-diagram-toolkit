@@ -115,13 +115,7 @@ function run_drug_example()
             symbols=Dict("Y" => "y", "W" => "w", "D" => "d", "Z" => "z", "X" => "x"),
             value_rename=Dict("x_hat" => "x'"),
         ),
-        data=Step5DataConfig(
-            mode=:interventions,
-            mix_var="D",
-            mix_sym="d^*",
-            mix_target_var="Z",
-            anchor_var="X",
-        ),
+        data=Step5DataConfig(mode=:none),
     )
     step5_ms = (time_ns() - step5_t0) / 1e6
     setup_ms = build_ms + simplify_ms

@@ -16,7 +16,11 @@ gamma <- conj(vY)
 vX <- cf(var = "X", obs = xt)             # observed world (no sub)
 vD <- cf(var = "D", obs = d)              # observed world (no sub)
 vZ <- cf(var = "Z", obs = z, sub = c(D = d))  # world3 do(D=d)
-delta <- conj(vX, vD, vZ)
+
+# cfid 0.1.9 is order-sensitive for this conditional conjunction. The
+# literature/README ordering places the subscripted counterfactual Z_d before
+# the matching factual event D=d.
+delta <- conj(vX, vZ, vD)
 
 # conditional counterfactual
 res <- identifiable(g, gamma, delta, data = "interventions")

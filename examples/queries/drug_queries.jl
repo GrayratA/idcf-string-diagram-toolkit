@@ -29,10 +29,6 @@
         value_rename=Dict("x_hat" => "x'"),
     ),
     data=(
-        mode=:interventions,
-        mix_var="D",
-        mix_sym="d^*",
-        mix_target_var="Z",
-        anchor_var="X",
+        mode=:none,
     ),
 )

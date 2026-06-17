@@ -116,7 +116,8 @@ end
 
     @test res.raw_tex ==
         "\\frac{\\sum_{w} P(z|do(d))P(x',y|do(z,w))P(d)P(w|do(doX_))}{P(z|do(d))P(x')P(d)}"
-    @test res.simplified_tex == res.raw_tex
+    @test res.simplified_tex ==
+        "\\frac{\\sum_{w} P(x',y|do(z,w))P(w|do(doX_))}{P(x')}"
     @test res.data_tex ==
         "\\frac{\\sum_{w,d^*} P(z|do(d))P(x',y|do(z,w))P(d^*)P(w|do(doX_))}{\\sum_{d^*} P(x')P(z|do(d^*))P(d^*)}"
 end

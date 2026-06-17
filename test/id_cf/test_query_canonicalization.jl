@@ -6,13 +6,11 @@
 
     qs = canonicalize_counterfactual_queries([q_real_1, q_ev, q_target, q_real_2])
 
-    @test length(qs) == 3
+    @test length(qs) == 2
     @test qs[1].outputs == [:Y]
     @test qs[2].world_name == :Real
     @test qs[2].interventions == Dict{Symbol,Symbol}()
-    @test qs[2].observations == Dict(:X => :x1, :D => :d)
-    @test qs[3].interventions == Dict(:D => :d)
-    @test qs[3].observations == Dict(:Z => :z)
+    @test qs[2].observations == Dict(:X => :x1, :D => :d, :Z => :z)
 end
 
 @testset "semantic query normalization" begin

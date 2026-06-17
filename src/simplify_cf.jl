@@ -178,8 +178,11 @@ function merge_identical_deterministic_boxes(wd::WiringDiagram)
             if isempty(groups)
                 continue
             end
-            # merge boxes in each group
-            merged_keeps = Int[]
+            # Merge only one duplicate group per pass. `rem_box!` renumbers
+            # Catlab boxes, so any other group ids computed before the deletion
+            # become stale. The outer `while` recomputes groups from the fresh
+            # diagram.
+            merged_keep = nothing
             for (S, bs) in groups
                 sorted_bs = sort(bs)
                 b_keep = first(sorted_bs)
@@ -200,14 +203,18 @@ function merge_identical_deterministic_boxes(wd::WiringDiagram)
                     flag = true
                     merged_here = true
                 end
-                merged_here && push!(merged_keeps, b_keep)
+                if merged_here
+                    merged_keep = b_keep
+                    break
+                end
             end
 
-            if !isempty(merged_keeps)
+            if merged_keep !== nothing
                 before = length(box_ids(wd)) + length(wires(wd))
-                separate_sharp_effect_copy_maps!(wd; source_boxes=merged_keeps)
+                separate_sharp_effect_copy_maps!(wd; source_boxes=[merged_keep])
                 after = length(box_ids(wd)) + length(wires(wd))
                 flag = flag || (after != before)
+                break
             end
         end
         

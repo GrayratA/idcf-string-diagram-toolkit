@@ -56,11 +56,13 @@ gamma <- conj(
   cf(var = "carcinoma", obs = val("carc_obs"), sub = c(age = 0L))
 )
 
-delta <- conj(
-  cf(var = "age", obs = val("age_obs")),
-  cf(var = "sex", obs = val("sex_obs")),
-  cf(var = "pbc", obs = val("pbc_obs"), sub = c(age = 0L))
-)
+vAge <- cf(var = "age", obs = val("age_obs"))
+vSex <- cf(var = "sex", obs = val("sex_obs"))
+vPbc <- cf(var = "pbc", obs = val("pbc_obs"), sub = c(age = 0L))
+
+# cfid 0.1.9 is order-sensitive here: pbc_age must appear before the matching
+# factual age event.
+delta <- conj(vPbc, vAge, vSex)
 
 res <- identifiable(g, gamma, delta, data = "interventions")
 

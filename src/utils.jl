@@ -292,16 +292,22 @@ function merge_source_signature(wd::WiringDiagram, src_box::Int, src_port::Int)
 end
 
 function input_source_signature(wd::WiringDiagram, b::Int)
-    sig = Tuple{Int,Vector{Any}}[]
+    sig = Tuple{Any,Vector{Any}}[]
     nin = length(input_ports(wd, b))
     for j in 1:nin
+        # Catlab may represent semantically identical boxes with different
+        # input-port order after copying/surgery. Mechanism inputs are typed
+        # wires, so compare by the target port's variable type rather than by
+        # the numeric port index.
+        var_type = port_value(wd, Port(b, InputPort, j))
         sources = Any[]
         for w in in_wires(wd, b, j)
             push!(sources, merge_source_signature(wd, w.source.box, w.source.port))
         end
         sort!(sources)
-        push!(sig, (j, sources))
+        push!(sig, (var_type, sources))
     end
+    sort!(sig; by = x -> string(x[1]))
     return sig
 end
 

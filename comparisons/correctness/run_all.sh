@@ -7,19 +7,19 @@
 # Usage:
 #     ./run_all.sh [N_RANDOM_CASES] [SEED]
 # e.g.
-#     ./run_all.sh 60 1
+#     ./run_all.sh 300 1
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-N="${1:-60}"
+N="${1:-300}"
 SEED="${2:-1}"
 
 cd "$HERE"
 
 echo "==> [1/4] generating corpus (N=$N, seed=$SEED)"
-python3 gen_corpus.py --n "$N" --seed "$SEED" --out .
+python3 gen_corpus.py --n "$N" --seed "$SEED" --min-random-n 5 --max-random-n 8 --out .
 
 echo "==> [2/4] running toolkit (Julia)"
 if command -v julia >/dev/null 2>&1; then
