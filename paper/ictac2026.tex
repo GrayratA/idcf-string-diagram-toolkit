@@ -218,8 +218,37 @@ Figure~\ref{fig:running-example} carries this model through the whole pipeline: 
 \end{figure}
 
 \section{Empirical Evaluation}\label{sec:discussion}
+We evaluate the prototype along two dimensions: correctness and runtime performance. Correctness is assessed through a differential testing harness against the reference R implementation \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs, while runtime performance is measured against both \texttt{cfid} and the Python \texttt{y0} library. This separation is important: the correctness harness first checks that the implementation returns verdicts consistent with an established counterfactual-identification tool, and the runtime benchmarks then measure the cost of obtaining those results.
 
-We evaluate the prototype against \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs, and against the Python \texttt{y0} library. The benchmark harnesses live in \texttt{comparisons/\allowbreak runtime/} (\texttt{julia\_\allowbreak benchmark.jl}, \texttt{r\_cfid\_\allowbreak benchmark.R}, \texttt{python\_y0\_\allowbreak benchmark.py}); all timings are warm medians over repeated executions on a standard desktop. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges).
+\paragraph{Differential correctness testing.}
+Before measuring speed, we first run a differential correctness harness in \texttt{comparisons/correctness/}. The harness generates counterfactual identification problems, translates each case into both the Julia input format and the R \texttt{cfid} input format, and compares the ID/FAIL verdicts returned by the two tools.
+
+The corpus contains structured benchmark cases and randomly sampled bow-free ADMGs over 5--8 nodes. Each random graph is paired with a generated conditional counterfactual query, and cases that reduce to ordinary single-world interventional queries are filtered out. The comparison uses \texttt{cfid} version 0.1.9 and the interventional-data setting, matching the current scope of the implementation.
+
+\begin{table}[t]
+\centering
+\caption{Systematic differential correctness test against R \texttt{cfid}.}
+\label{tab:correctness-harness}
+\begin{tabular}{lr}
+\toprule
+Metric & Value \\
+\midrule
+Total cases & 1860 \\
+Comparable cases & 1860 \\
+Agreements & 1832 \\
+Disagreements & 28 \\
+Tool errors & 0 \\
+Agreement rate & 98.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:correctness-harness} shows that the Julia implementation agrees with \texttt{cfid} on 1832 out of 1860 comparable cases, giving a 98.5\% agreement rate. The remaining disagreements are boundary cases where one tool returns ID and the other returns FAIL. Since a FAIL can also reflect a conservative limitation of an implementation rather than a proof of non-identifiability, these cases are treated as targets for further investigation rather than direct counterexamples to soundness.
+
+
+
+\paragraph{Runtime benchmarking.}
+Having established a high level of cross-tool agreement, we next compare runtime performance. We evaluate the prototype against \texttt{cfid} and the Python \texttt{y0} library. The benchmark harnesses live in \texttt{comparisons/\allowbreak runtime/} (\texttt{julia\_\allowbreak benchmark.jl}, \texttt{r\_cfid\_\allowbreak benchmark.R}, and \texttt{python\_y0\_\allowbreak benchmark.py}); all timings are warm medians over repeated executions on a standard desktop. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges).
 
 
 \begin{table}[t]
@@ -263,9 +292,6 @@ A stage-level breakdown explains this behaviour. The dominant cost in the Julia 
 The synthetic families expose this structure-dependent behaviour more clearly (Table~\ref{tab:speedup}, bottom). On \texttt{chain}, \texttt{fanin}, and \texttt{dense}, Julia is faster than R \texttt{cfid}, with speed-ups of $6.13\times$, $3.79\times$, and $2.34\times$, respectively. Compared with Python \texttt{y0}, Julia is faster on \texttt{chain} and \texttt{dense}, and roughly comparable on \texttt{fanin}. These results suggest that the diagrammatic pipeline is competitive on sparse and moderately connected graph structures.
 
 The main limitation appears on the heavily confounded \texttt{chain\_bi} family. Here the result reverses: Julia is slower than both R \texttt{cfid} and Python \texttt{y0}, with ratios of $0.38\times$ and $0.04\times$, respectively. The reason is that bidirected confounding greatly increases the cost of diagrammatic simplification. The identification phase remains small, but the preprocessing cost dominates the total runtime.
-
-
-For correctness we use cross-tool validation. Across all identifiable benchmark queries our tool and \texttt{cfid} return expressions denoting the same interventional/counterfactual distribution (up to ordering and formatting), and both correctly report failure on the non-identifiable queries. Beyond runtime, making string diagrams first-class objects gives the tool a form of semantic transparency absent from symbolic implementations: every transformation step---ADMG compilation, multiverse construction, each simplification pass, and fragment identification---is exported to Chyp and can be inspected, whereas in \texttt{cfid} decomposition and simplification are internal. The use of Catlab and Chyp also connects the implementation to the categorical and diagrammatic-reasoning communities rather than positioning it purely within the causal-inference software ecosystem.
 
 
 \paragraph{Comb-Disintegration Causal Inference Benchmarks.}

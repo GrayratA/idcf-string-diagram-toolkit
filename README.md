@@ -10,6 +10,7 @@ Counterfactual identification prototype based on Julia/Catlab.
 - `net/`: Bayesian network structure files (for example `hepar2.net`)
 - `tools/`: helper scripts (for example BN-to-ADMG conversion)
 - `comparisons/`: benchmark scripts and comparison artifacts
+  - `comparisons/correctness/`: differential correctness harness against R `cfid`
   - `comparisons/runtime/`: primary Julia vs R runtime benchmarks
   - `comparisons/runtime/structural_tests/`: structural scaling scripts/data/profiles
 - `trace/`: intermediate trace artifacts
@@ -19,7 +20,7 @@ Counterfactual identification prototype based on Julia/Catlab.
 Prerequisites:
 
 - Julia (project uses `Project.toml` / `Manifest.toml`)
-- R with package `cfid` (for R-side benchmarks)
+- R with package `cfid >= 0.1.9` (for R-side correctness/runtime comparisons)
 
 Install Julia dependencies:
 
@@ -263,6 +264,41 @@ Important limitation:
 - The tool does not yet attach stochastic matrices to individual Catlab boxes or compose those boxes to derive the joint distribution automatically.
 - Therefore, the current feature is best described as diagram-validated comb inference from a given joint distribution, not a fully executable probabilistic string-diagram model.
 - It is not yet a fully general causal inference engine for arbitrary diagrams and arbitrary causal-effect queries.
+
+## Correctness Harness
+
+The main correctness check is a differential-testing harness in `comparisons/correctness/`. It generates counterfactual identification cases, translates each case to both the Julia toolkit and R `cfid`, and compares their ID/FAIL verdicts.
+
+Current scope:
+- Reference tool: R `cfid >= 0.1.9`.
+- Data setting: interventional-data setting, matching the current ID-CF implementation scope.
+- Corpus: structured benchmark cases plus seeded random bow-free ADMG/query cases over 5-8 nodes.
+- Filtering: cases that reduce to ordinary single-world interventional queries are removed, so the corpus focuses on genuine cross-world counterfactual identification.
+- Output: `report.md` with agreement/disagreement counts.
+
+Run from the repository root:
+
+```powershell
+python comparisons/correctness/gen_corpus.py --n 300 --seed 1 --min-random-n 5 --max-random-n 8 --out comparisons/correctness
+```
+
+```powershell
+julia --project=. comparisons/correctness/run_julia.jl comparisons/correctness/corpus.jl comparisons/correctness/verdicts_julia.tsv
+```
+
+```powershell
+Rscript comparisons/correctness/run_cfid.R comparisons/correctness/corpus.R comparisons/correctness/verdicts_cfid.tsv
+```
+
+```powershell
+python comparisons/correctness/compare.py comparisons/correctness/corpus.json comparisons/correctness/verdicts_julia.tsv comparisons/correctness/verdicts_cfid.tsv comparisons/correctness/report.md
+```
+
+Note: `compare.py` exits non-zero if any disagreement is found. This is useful for regression testing, but disagreements should be inspected rather than treated automatically as proof that one tool is wrong.
+
+For details, see:
+
+- `comparisons/correctness/README.md`
 
 ## Runtime Benchmarks
 
