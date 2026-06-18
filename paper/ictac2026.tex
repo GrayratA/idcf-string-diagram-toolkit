@@ -43,42 +43,124 @@ Recent work, initiated by~\cite{jacobs2019causal} and further developed in \cite
 
 The advantage of this semantics is that it makes structural causal reasoning explicit: rather than manipulating symbolic formulas alone, one works with compositional diagrams whose topology encodes causal constraints, and surgery exposes the local structure of interventions and confounding. It is attractive for tool support in particular, since the same diagrammatic primitives are re-used across model construction, intervention, and simplification.
 
-Despite the growing theoretical prominence of string diagram surgery, there is not yet a single system that implements counterfactual identification directly on this semantics. Existing projects provide complementary functionality — categorical probabilistic libraries~\cite{cho2017efprob}, quantum-circuit tooling~\cite{kissinger2024pqs}, and general string-diagram manipulators (e.g.~\cite{caldwell2026tensorrocq,chyp2024}) — but a focused pipeline for diagrammatic counterfactual identification is still missing. In this work we take the first steps to address this gap. Our contributions are:
+Despite the growing theoretical prominence of string diagram surgery, there is not yet a single system that implements counterfactual identification directly on this semantics. Existing projects provide complementary functionality — categorical probabilistic libraries~\cite{cho2017efprob}, quantum circuit tooling~\cite{kissinger2024pqs}, and general string-diagram manipulators (e.g.~\cite{caldwell2026tensorrocq,chyp2024}) — but a focused pipeline for diagrammatic counterfactual identification is still missing. In this work we take the first steps to address this gap. Our contributions are:
 \begin{itemize}
     \item We present an implementation of counterfactual identification based on string diagram surgery, realised in Julia with the Catlab ecosystem.
     \item We analyse the concrete challenges of implementing categorical causal semantics, including diagram representation, parallel world construction, and simplification.
-    \item We connect the implementation to the broader string-diagrammatic reasoning ecosystem through Chyp export, and outline how the same infrastructure can extend toward richer probabilistic semantics.
+    \item We connect the implementation to the broader string diagrammatic reasoning ecosystem through Chyp export, and outline how the same infrastructure can extend toward richer probabilistic semantics.
     \item We compare our implementation with existing R and Python alternatives, identifying the cases where a categorical approach performs better or worse and clarifying the trade-offs involved.
 \end{itemize}
 
-The remainder of the paper is organised as follows. Section~\ref{sec:background} reviews the categorical background and string diagram view of Bayesian networks. Section~\ref{sec:implementation} describes the implementation choices and available functionality. Section~\ref{sec:discussion} compares the tool with existing work and highlights experimental evidence. Section~\ref{sec:conclusion} concludes.
+%The remainder of the paper is organised as follows. Section~\ref{sec:background} reviews the categorical background and string diagram view of Bayesian networks. Section~\ref{sec:implementation} describes the implementation choices and available functionality. Section~\ref{sec:discussion} compares the tool with existing work and highlights experimental evidence. Section~\ref{sec:conclusion} concludes.
 
 \section{Categorical Background}\label{sec:background}
 
-We work with string diagrams for symmetric monoidal categories carrying a copy--discard--uniform (CDU) structure, the setting introduced for causal reasoning by Jacobs, Kissinger and Zanasi~\cite{jacobs2019causal,jacobs2021causal} and closely related to Markov categories~\cite{fritz2020synthetic}. This section fixes the diagrammatic vocabulary that the implementation in Section~\ref{sec:implementation} manipulates directly.
+We recall just enough of the diagrammatic semantics of causal models to phrase the three kinds of query our tool answers. Throughout we follow the string-diagram approach to causality of Jacobs, Kissinger and Zanasi~\cite{jacobs2021causal,jacobs2019causal}, introducing each notion on a single running example---a commuter's daily journey---and keeping the category theory to the minimum needed to read the diagrams.
 
-\paragraph{Causal Models as String Diagrams.}
-Such a category equips every object $A$ with a \emph{copy} map $A \to A\otimes A$, a \emph{discard} map $A \to I$ to the monoidal unit, and a \emph{uniform} state $I\to A$~\cite{jacobs2021causal,jacobs2015}; the uniform state, which samples a variable independently of its causes, is what makes interventions expressible. Morphisms are drawn as \emph{string diagrams}~\cite{intro_to_string_diagram}: wires denote variables, boxes morphisms, sequential composition stacks boxes and the tensor places them side by side. A \emph{channel} is a morphism $f:A\to B$ read as a conditional $P(B\mid A)$; a \emph{state} $I\to A$ is a distribution and an \emph{effect} $A\to I$ its dual, the canonical one being discard. A morphism is \emph{deterministic} when it commutes with copying; we use \emph{sharp states} (fixing a variable to a constant) and \emph{sharp effects} (constraining a wire to an observed value). In a Bayesian-network diagram a copy map exposes a variable as an observed output, while discarding a wire marginalises a latent one.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[>=Stealth, font=\footnotesize,
+  box/.style={draw, rounded corners, fill=white, minimum width=0.72cm, minimum height=0.55cm, inner sep=1pt},
+  st/.style={fill=gray!25, draw, regular polygon, regular polygon sides=3, inner sep=0pt, minimum size=3.8mm},
+  cp/.style={circle, fill, inner sep=1.1pt},
+  wl/.style={inner sep=1.5pt, font=\scriptsize}
+]
+% mechanisms (read bottom to top)
+\node[box] (fW) at (0.0,0.7) {$f_W$};
+\node[box] (fT) at (1.1,2.4) {$f_T$};
+\node[box] (fM) at (2.3,1.5) {$f_M$};
+\node[box] (fL) at (3.1,3.2) {$f_L$};
+\node[box] (fY) at (4.3,4.3) {$f_Y$};
+% states (noise + latent), apex up
+\node[st] (wW) at (0.0,0.0) {}; \node[wl,right=0pt of wW]{$\omega_W$};
+\node[st] (wT) at (0.45,1.75){};\node[wl,left=-1pt of wT]{$\omega_T$};
+\node[st] (wM) at (2.3,0.8) {}; \node[wl,right=0pt of wM]{$\omega_M$};
+\node[st] (wL) at (2.5,2.55){}; \node[wl,left=-1pt of wL]{$\omega_L$};
+\node[st] (wY) at (4.8,3.65){}; \node[wl,right=0pt of wY]{$\omega_Y$};
+\node[st] (R)  at (1.7,0.55){}; \node[wl,right=0pt of R]{$R$};
+% copy dots
+\node[cp] (cW) at (0.0,1.35){};
+\node[cp] (cR) at (1.7,1.05){};
+\node[cp] (cT) at (1.1,3.05){};
+\node[cp] (cM) at (2.3,2.25){};
+\node[cp] (cL) at (3.1,3.85){};
+% noise into mechanisms (from below)
+\draw (wW.north) -- (fW.south);
+\draw (wT.north) -- (fT.250);
+\draw (wM.north) -- (fM.south);
+\draw (wL.north) -- (fL.250);
+\draw (wY.north) -- (fY.290);
+% W copied to output, f_T, f_M
+\draw (fW.north) -- (cW);
+\draw (cW) -- (0.0,5.15) node[wl,above]{$W$};
+\draw (cW) to[out=70,in=250] (fT.290);
+\draw (cW) to[out=15,in=250] (fM.250);
+% R copied to f_T and (up the right margin) f_Y
+\draw (R.north) -- (cR);
+\draw (cR) to[out=120,in=290] (fT.310);
+\draw (cR) -- (5.05,1.05) -- (5.05,4.3) -- (fY.east);
+% T copied to output and f_L
+\draw (fT.north) -- (cT);
+\draw (cT) -- (1.1,5.15) node[wl,above]{$T$};
+\draw (cT) to[out=45,in=250] (fL.250);
+% M copied to output and f_L
+\draw (fM.north) -- (cM);
+\draw (cM) -- (2.3,5.15) node[wl,above]{$M$};
+\draw (cM) to[out=115,in=290] (fL.290);
+% L copied to output and f_Y
+\draw (fL.north) -- (cL);
+\draw (cL) -- (3.1,5.15) node[wl,above]{$L$};
+\draw (cL) to[out=40,in=250] (fY.250);
+% Y output
+\draw (fY.north) -- (4.3,5.15) node[wl,above]{$Y$};
+\end{tikzpicture}
+\caption{The commute model as a string diagram, read bottom to top. Each box is a \emph{mechanism} $f_X$ taking its parents and a private noise state $\omega_X$ (triangles) to the variable $X$; black dots \emph{copy} a value to several consumers, exposing each variable as an output wire at the top. The confounding $T\leftrightarrow Y$ is the shared latent state $R$ copied into both $f_T$ and $f_Y$. The whole diagram denotes the joint distribution over $W,T,M,L,Y$.}
+\label{fig:bn-string}
+\end{figure}
 
-In this language a structural causal model is assembled compositionally. Each endogenous variable $X$ with parents $\mathrm{pa}(X)$ becomes a \emph{mechanism}
-\[ f_X : \Big(\textstyle\bigotimes_{Y \in \mathrm{pa}(X)} Y\Big)\otimes U_X \;\longrightarrow\; X, \]
-a box that takes the parent wires together with a fresh exogenous noise source $U_X$ (a state $I\to U_X$) and produces the wire $X$. Giving each mechanism its own noise source factors all randomness into the exogenous states, leaving the mechanisms deterministic---the property that later lets distinct worlds share the same randomness. Wiring each mechanism's output into the inputs of its children---inserting copy maps wherever a variable feeds several children---yields a single string diagram whose denotation is the joint distribution (the running example is shown in Figure~\ref{fig:running-example}). Two structural advantages follow: conditional-independence (d-separation) properties surface as diagrammatic connectivity, and, crucially for us, interventions become \emph{local} rewrites rather than global symbolic substitutions.
+\paragraph{Bayesian Networks as String Diagrams.}
+Figure~\ref{fig:bn-string} renders our running \emph{commute} model as a string diagram (read bottom to top). The model has five observable variables: weather $W$, departure time $T$, mode of transport $M$, lateness $L$, and work performance $Y$. They label the wires in the diagram.To each variable $X$ is associated a \emph{mechanism} $f_X \colon \Big(\textstyle\bigotimes_{V \in \mathrm{pa}(X)} V\Big)\otimes \Omega_X \;\longrightarrow\; X$, depicted as a box: its meaning is a function that reads the variables that are its direct causes (its parents $\mathrm{pa}(X)$) together with a private noise source $\omega_X$---an exogenous state modelling everything left unmodelled, depicted as a triangle---and outputs a probability distribution over $X$. At a glance, the representation of this model as a string diagram resembles a Bayesian network. However, unlike networks, string diagrams are \emph{algebraic} entities: understood as morphisms of a symmetric monoidal category (SMC), they can be reasoned about compositionally through that monoidal structure. Within this perspective, we interpret each box as a morphism of an SMC, and the whole string diagram results from assembling them together by sequential composition and monoidal product (depicted as vertical and horizontal juxtaposition respectively). Variables are the objects of the SMC, and states are morphisms with no input. For each object we assume a \emph{copy} map (black dots) that duplicate a value, and a \emph{discard} map that delete it. A category equipped with these compatibly is a \emph{copy--discard} (or Markov) category~\cite{fritz2020synthetic,jacobs2015}, which constitutes a basic algebraic framework for probabilistic computation. In our example, a copy dot is inserted wherever a variable feeds several mechanisms, so that the same value can be both passed on and exposed as an observed output. \emph{Confounding}---a hidden common cause of two variables, which we write $T\leftrightarrow Y$---is represented diagrammatically by a single latent state $R$ copied into both $f_T$ and $f_Y$ (Figure~\ref{fig:bn-string}): for the commuter, an unobserved factor (say, a recurring engineering work pattern) influences both when she sets off and how she ultimately performs.
 
-Latent confounding is treated through \emph{Acyclic Directed Mixed Graphs} (ADMGs), whose bidirected edges $X\leftrightarrow Y$ record a shared hidden cause. Mirroring the implementation's compilation step, each bidirected edge is \emph{rootified}: it is replaced by an explicit latent root state feeding both $X$ and $Y$ through a copy map, turning implicit confounding into a shared exogenous source.
 
-\paragraph{Surgery and Counterfactuals.}
-An intervention $\mathrm{do}(X=x)$ is modelled by \emph{string diagram surgery}~\cite{jacobs2019causal,jacobs2021causal,lorenz2023causal}: the wires entering $f_X$ are \emph{cut}---the incoming parents are discarded---and $X$ is instead supplied by a sharp state $\mathsf{do}(X{=}x):I\to X$ fixing it to the constant $x$ (Figure~\ref{fig:re-pw}). Categorically this replaces a channel by a constant morphism; graphically it severs $X$ from its causes while leaving the rest of the diagram intact, so the resulting diagram denotes the interventional distribution $P(\,\cdot \mid \mathrm{do}(X{=}x))$.
+%Composing all five mechanisms yields one diagram whose denotation is the joint distribution over $W,T,M,L,Y$. Routing every source of randomness through the explicit noise states $\omega_X$ leaves the mechanisms themselves \emph{deterministic}: a small move that pays off below, since two scenarios can then be made to share exactly the same randomness.
 
-Counterfactual queries such as $P(Y_x \mid X{=}x',\,Z{=}z)$ compare what \emph{did} happen with what \emph{would have} happened under a different intervention, and so require several worlds to coexist. They are captured by a \emph{parallel-world} (multiverse, the ``twin'' construction of~\cite{jacobs2021causal}): the model is duplicated once per world, surgery is applied only in the intervened worlds, and---the key point---the exogenous noise sources are \emph{shared} across worlds rather than re-sampled. Diagrammatically the latent state is copied into every world (Figure~\ref{fig:re-pw}), so the worlds remain coupled through their common randomness; this is exactly the parallel-world semantics of counterfactual identification~\cite{pearl2009causality,shpitser2008complete}. Observed evidence ($X=x'$, $Z=z$) is imposed by attaching sharp effects to the corresponding output wires.
 
-Whether a counterfactual query is \emph{identifiable}---expressible purely in terms of the observational distribution---is decided by the ID-CF algorithm~\cite{shpitser2008complete}. After surgery and simplification, the diagram decomposes into maximal confounded components, the \emph{c-components} (or districts) of the ADMG; their diagrammatic counterparts are the \emph{R-fragments} that the implementation extracts and rewrites. This decomposition makes plain why some queries are identifiable and others are not: identification succeeds exactly when every fragment's exogenous noise can be absorbed into a consistent, observable expression.
+\paragraph{Interventions by Surgery.}
+To ask what happens if we \emph{force} a variable to a value---Pearl's $\mathrm{do}(T{=}t)$---we perform \emph{string diagram surgery}~\cite{jacobs2021causal,jacobs2019causal,lorenz2023causal}: we cut the wires entering the mechanism $f_T$, discarding its parents and noise, and replace $f_T$ by a \emph{sharp state} $\mathsf{do}(T{=}t):I\to T$, the deterministic distribution concentrated at $t$. Graphically $T$ is severed from its causes while the rest of the diagram is left untouched, so the surgered diagram denotes the interventional distribution $P(\,\cdot\mid\mathrm{do}(T{=}t))$. Surgery is thus a purely \emph{local} rewrite, in contrast with the global symbolic substitutions of the algebraic account; this locality is what makes it amenable to mechanical manipulation.
+
+\paragraph{Example 1: A Counterfactual Query.}
+Counterfactuals compare what happened with what \emph{would have} happened. For the commuter we ask: \emph{given that she actually left at time $t'$ and would have taken mode $m$ under the prevailing weather, what would her performance $Y$ have been had she instead left at time $t$?}---a query of the form $P(Y_t \mid T{=}t',\,M{=}m)$. The factual and the hypothetical are different worlds, yet they concern the same commuter and so share the same hidden causes. We represent this by a \emph{twin}, or parallel-world, diagram~\cite{jacobs2021causal}: two copies of the model, with surgery applied only in the world where $T$ is set to $t$, and the latent state $R$ \emph{copied into both worlds} so they stay coupled through their common randomness (Figure~\ref{fig:re-pw}). Here the deterministic mechanisms matter: sharing $R$ shares the actual circumstances across worlds. Factual observations ($T{=}t'$, $M{=}m$) are imposed by attaching \emph{sharp effects}---the duals of sharp states---to the corresponding output wires.
+
+\paragraph{Example 2: A Causal-Inference Query by Comb Disintegration.}
+Often we want a plain interventional effect such as $P(Y\mid\mathrm{do}(T))$, but the confounder $T\leftrightarrow Y$ blocks reading it directly off the observational distribution. The diagrammatic remedy is \emph{comb disintegration}~\cite{jacobs2021causal}. A \emph{comb} is a process with a hole---drawn as a box with a rectangular bite removed---into which another process can be plugged; it is the diagrammatic shape of a conditional that still awaits one of its inputs. One factors the observable part of the model as a comb $g$ whose hole sits exactly where the confounded mechanism would go, leaving a process $f$ as its filler, so that plugging $f$ into $g$ recovers the joint distribution:
+\begin{center}
+\begin{tikzpicture}[>=Stealth, font=\footnotesize, baseline,
+  bx/.style={draw, rounded corners=1.5pt, fill=white}]
+% comb g: a box with a rectangular bite out of its top edge
+\draw[rounded corners=1.5pt, fill=gray!8]
+  (0,0) -- (2.4,0) -- (2.4,1.5) -- (1.55,1.5) -- (1.55,0.8)
+  -- (0.85,0.8) -- (0.85,1.5) -- (0,1.5) -- cycle;
+\node at (0.42,0.42) {$g$};
+% filler f plugged into the hole
+\node[bx, minimum width=0.6cm, minimum height=0.42cm] (f) at (1.2,1.13) {$f$};
+\draw (1.05,0.92) -- (1.05,0.8);
+\draw (1.35,0.92) -- (1.35,0.8);
+% external input (bottom) and output (top)
+\draw (0.42,0) -- (0.42,-0.32);
+\draw (2.0,1.5) -- (2.0,1.82);
+\end{tikzpicture}
+\end{center}
+\emph{Disintegrating} the observed joint re-expresses $f$ in terms of observable conditionals; plugging the surgically modified $f$ back into $g$ then yields $P(Y\mid\mathrm{do}(T))$ as a formula over observable quantities. The classical back- and front-door adjustments are special cases, and this is precisely the procedure realised by the comb-based causal-inference extension of Section~\ref{sec:implementation}.
+
+\paragraph{Identifiability.}
+A query is \emph{identifiable} when it can be rewritten purely in terms of the observational distribution. After surgery and simplification the diagram splits into maximal confounded blocks---its \emph{c-components} (or districts)---whose diagrammatic counterparts are the \emph{R-fragments} the implementation extracts and rewrites. Identification succeeds exactly when every fragment's exogenous noise can be absorbed into a consistent observable expression; for counterfactuals this decision is made by the ID-CF algorithm~\cite{shpitser2008complete}, whose diagrammatic realisation is the subject of the next section.
 
 \section{Implementation}\label{sec:implementation}
 
-We implemented the approach in Julia on top of the Catlab ecosystem~\cite{catlab}, which provides a computational realisation of symmetric monoidal categories through \emph{wiring diagrams}(the concrete Catlab data structure used to implement the abstract structure of a string diagram). The whole computation manipulates a single kind of object: a Catlab \texttt{WiringDiagram} in which boxes are mechanisms (morphisms) and wires are variable dependencies. Each box carries a symbolic name encoding its role---\texttt{f\_X} for a mechanism, \texttt{PU\_X} for an exogenous source, \texttt{do\_X=x} for an intervention (a \emph{sharp state}), \texttt{obs\_X=x} for an observation (a \emph{sharp effect}), \texttt{c\_X} for a deterministic constant mechanism---so that surgery and identification are realised uniformly as rewrites on named boxes and their wiring.
+We implemented the approach in Julia on top of the Catlab ecosystem~\cite{catlab}, which realises symmetric monoidal categories through \emph{wiring diagrams}, the concrete data structure for a string diagram. The whole computation manipulates a single such \texttt{WiringDiagram}, in which boxes are mechanisms (morphisms) and wires variable dependencies. Each box carries a symbolic name encoding its role---\texttt{f\_X} for a mechanism, \texttt{PU\_X} for an exogenous source, \texttt{do\_X=x} for an intervention (a \emph{sharp state}), \texttt{obs\_X=x} for an observation (a \emph{sharp effect}), \texttt{c\_X} for a deterministic constant mechanism---so that surgery and identification are uniformly rewrites on named boxes and their wiring.
 
-\paragraph{Pipeline and Artifact.}
-Identification is driven by a single entry point, \texttt{identify\_counterfactual} (alias \texttt{run\_cf\_pipeline}) in \texttt{src/id\_cf.jl}, which executes five stages, timing each independently and exporting an intermediate diagram after every stage (dashed arrows below mark the Chyp trace):
+\paragraph{Pipeline, Illustrated on a Worked Example.}
+We follow a single \emph{commute} scenario through the entire pipeline. The model has variables \(W,T,M,L,Y\)---weather, departure time, mode of transport, lateness, and final work performance---and the counterfactual query asks: for someone who actually left at time \(t'\) under weather \(w\), what would their work performance have been if they had left at time \(t\), given the additional behavioural evidence that, under the same weather, they would use transport mode \(m\)? Identification is driven by a single entry point, \texttt{identify\_counterfactual} (alias \texttt{run\_cf\_pipeline}) in \texttt{src/id\_cf.jl}, which executes five stages, timing each independently and exporting an intermediate diagram after every stage (dashed arrows below mark the Chyp trace). Figure~\ref{fig:running-example} carries the commute model through all five:
 
 \begin{center}
 \begin{tikzpicture}[>=Stealth, scale=0.62, transform shape, node distance=0.5cm, every node/.style={font=\small, draw, rectangle, rounded corners, fill=gray!10, inner sep=4pt}]
@@ -99,45 +181,15 @@ Identification is driven by a single entry point, \texttt{identify\_counterfactu
 \end{center}
 
 \begin{enumerate}
-    \item \textbf{ADMG compilation} (\texttt{src/admg\_compile.jl}). An input Acyclic Directed Mixed Graph (ADMG) is \emph{rootified}---each bidirected edge $X \leftrightarrow Y$ is replaced by a fresh latent root feeding both endpoints---and then compiled by \texttt{graph\_b\_to\_scm} into a base structural diagram with one mechanism box $f_V : (\mathrm{pa}(V), U_V) \to V$ and one exogenous source $PU_V$ per variable.
-    \item \textbf{Parallel-world construction} (\texttt{src/build\_multiverse}). The base diagram is lifted into a multiverse diagram by duplicating each mechanism box once per world while \emph{sharing} the exogenous source boxes across all worlds---the diagrammatic counterpart of shared exogenous noise. An intervened variable splits into a discarded sink and a fresh \texttt{do\_X=x} source; an observed variable receives an \texttt{obs\_X=x} sharp-effect box.
-    \item \textbf{Simplification} (\texttt{src/simplify\_cf.jl}). Four rewrite passes reduce the diagram to canonical form: pruning discarded branches and dead boxes, separating sharp effects from copy/fan-out, merging deterministic mechanisms with identical input sources, and absorbing exogenous noise by replacing each $f_X$ with a deterministic constant mechanism $c_X$.
+    \item \textbf{ADMG compilation} (\texttt{src/admg\_compile.jl}). The input Acyclic Directed Mixed Graph (ADMG) is \emph{rootified}---each bidirected edge $X \leftrightarrow Y$ is replaced by a fresh latent root feeding both endpoints---and then compiled by \texttt{graph\_b\_to\_scm} into a base structural diagram with one mechanism box $f_V : (\mathrm{pa}(V), U_V) \to V$ and one exogenous source $PU_V$ (the noise state $\omega_V$ of Section~\ref{sec:background}) per variable. For the commute model the bidirected edge $T\leftrightarrow Y$ becomes a shared latent root $R$ feeding both $T$ and $Y$ (Figure~\ref{fig:re-admg}).
+    \item \textbf{Parallel-world construction} (\texttt{src/build\_multiverse}). The base diagram is lifted into a multiverse diagram by duplicating each mechanism box once per world while \emph{sharing} the exogenous source boxes across all worlds---the diagrammatic counterpart of shared exogenous noise. An intervened variable splits into a discarded sink and a fresh \texttt{do\_X=x} source; an observed variable receives an \texttt{obs\_X=x} sharp-effect box. Here the factual outcome $Y$ and the counterfactual $Y_t$ remain coupled through the shared root $R$ (Figure~\ref{fig:re-pw}).
+    \item \textbf{Simplification} (\texttt{src/simplify\_cf.jl}). Four rewrite passes reduce the diagram to canonical form: pruning discarded branches and dead boxes, separating sharp effects from copy/fan-out, merging deterministic mechanisms with identical input sources, and absorbing exogenous noise by replacing each $f_X$ with a deterministic constant mechanism $c_X$ (Figure~\ref{fig:re-simplified}).
     \item \textbf{ID-CF identification} (Step~4, \texttt{src/id\_cf.jl}). The simplified diagram is decomposed into \emph{R-fragments}---the diagrammatic counterpart of c-components (districts) in ADMGs---and each fragment is rewritten by case analysis into an interventional probability box $P(C_l, F_l^{out} \mid \mathrm{do}(D_l), \mathrm{do}(F_l^{in}))$. A residual unabsorbed exogenous source signals a non-identifiable query.
-    \item \textbf{Expression output} (Step~5, \texttt{id\_cf\_step5}). The resulting probability boxes are parsed into a small expression tree and rendered as a LaTeX formula, with optional algebraic simplification (e.g.\ dropping vacuous interventions and eliminating normalised summations).
+    \item \textbf{Expression output} (Step~5, \texttt{id\_cf\_step5}). The resulting probability boxes are parsed into a small expression tree and rendered as a LaTeX formula, with optional algebraic simplification (e.g.\ dropping vacuous interventions and eliminating normalised summations); the identified estimand for the commute query is shown in Figure~\ref{fig:re-expr}.
 \end{enumerate}
-The remaining modules support this pipeline: \texttt{src/bn\_import.jl} and \texttt{tools/\allowbreak import\_bn\_to\_admg.jl} ingest external Bayesian-network files (\texttt{.bif}/\texttt{.net}) as ADMGs; \texttt{src/chyp\_export.jl} serialises any diagram to the Chyp format~\cite{chyp2024} for inspection; and \texttt{src/utils.jl} provides the shared box predicates and graph utilities (topological ordering, signature matching). The command-line driver \texttt{src/run\_demo.jl} and the worked commute example in \texttt{src/main.jl} exercise the full pipeline.
+Supporting modules---Bayesian-network import from \texttt{.bif}/\texttt{.net} files, Chyp serialisation~\cite{chyp2024} for inspection, and shared graph utilities---together with the command-line driver and the worked commute example, are mapped in the top-level \texttt{README.md}, which first-time users should open first: its quickstart runs this full pipeline and the comb-disintegration examples of the next paragraph.
 
-\paragraph{Data Structures and Design Decisions.}
-The implementation exposes two interfaces. \texttt{identify\_counterfactual} handles counterfactual identification and returns symbolic probability formulas, whereas \texttt{infer\_causal\_effect} handles comb-disintegration causal inference and returns numerical interventional distributions.
-
-Causal models are described by an \texttt{ADMGModel} (directed and bidirected edge lists), which rootification turns into a \texttt{ConfoundedModel} (directed edges plus a map from each latent root to the variables it confounds). A \texttt{CounterfactualQuery} specifies, per world, the interventions, observations, and output variables. From the simplification stage onwards every state is a Catlab \texttt{WiringDiagram}, and identification proceeds entirely by pattern-matching on box names and rewiring---there is no separate symbolic graph representation. Final expressions are built over a small term language (atomic probability factors, products, sums, and fractions) so that identifiable queries are reported as algebraic formulas matching the output style of existing identification tools, and non-identifiable queries report the stage and box at which absorption failed.
-
-Three decisions characterise the design. First, a single diagrammatic representation is used end to end, so surgery, simplification, and identification are all rewrites on the same object rather than transformations between distinct data models. Second, the pipeline keeps every intermediate stage explicit and exports it to Chyp, making each transformation step inspectable---in contrast to symbolic tools where decomposition and simplification are internal. Third, the stages mirror the theoretical algorithm one-to-one, so each can be tested and optimised independently; the test suite in \texttt{test/} covers ADMG compilation, multiverse construction, simplification, R-fragment partitioning, and expression generation as separate module-level test sets.
-
-\paragraph{Comb-Disintegration Causal Inference Extension.}
-In addition to counterfactual identification, the prototype includes a scoped causal-inference extension based on comb disintegration. This part of the tool is exposed through \texttt{infer\_causal\_effect}, rather than \texttt{identify\_counterfactual}. The user provides a Catlab string diagram, a finite observational joint distribution, and a comb structure specified by four groups of variables: observed context \(A\), interventions \(X\), bridge variables \(B\), and outcomes \(C\). The intended query has the form
-\[
-P(C \mid A, \mathrm{do}(X)).
-\]
-The tool checks whether the supplied diagram admits the required comb decomposition and, if so, computes the interventional distribution numerically from the joint table.
-
-This extension is demonstrated on a small smoking example and a larger HEPAR2-based clinical example---for instance, how chronic hepatitis would be distributed under interventions on hospital, surgery, and choledocholithotomy history, with injections and transfusion as bridge variables. The full HEPAR2 graph is used for structural validation, while the numerical computation currently uses a finite synthetic joint table over the selected variables.
-
-At present the diagram and the probability table are separate inputs: the diagram validates that comb disintegration is applicable, while the joint table supplies the numbers. This is a practical limitation rather than a theoretical one---the implementation treats Catlab diagrams as structural objects (names, wires, dependencies) rather than executable probabilistic programs. A more complete version would attach a stochastic channel to each mechanism box and compose them along the diagram to obtain the joint distribution directly, avoiding the separate table.
-
-
-
-\paragraph{Orienting and Running the Tool.}
-For first-time users the recommended entry point is \texttt{src/run\_demo.jl}: it loads a model and a counterfactual query, calls \texttt{identify\_counterfactual}, and prints whether the query is identifiable together with the resulting probability expression. Inputs live in \texttt{examples/admg\_models/}, \texttt{examples/string\_diagrams/}, and \texttt{examples/queries/}; a typical run selects a model and a matching query and inspects the printed result, with optional trace files under \texttt{trace/} exposing the intermediate stages. The comb-disintegration examples in \texttt{examples/causal\_inference/} are run the same way through \texttt{infer\_causal\_effect}---supplying a diagram, a joint table, and the four variable groups---returning a numerical interventional distribution such as \(P(C \mid \mathrm{do}(S))\) in the smoking example.
-
-\paragraph{Worked Example.}
-We use a commute scenario as a worked example to illustrate the intermediate representations produced by the implementation. The model describes a daily travel setting with variables \(W,T,M,L,Y\), representing weather, departure time, mode of transport, lateness, and final work performance. 
-
-The counterfactual query asks: for someone who actually left at time \(t'\) under weather condition \(w\), what would their work performance have been if they had left at time \(t\), while also incorporating additional behavioural evidence that, under the same weather, they would use transport mode \(m\)? 
-
-Figure~\ref{fig:running-example} carries this model through the whole pipeline: from the input ADMG and its rootification (a), through the parallel-world construction (b), to the simplified diagram (c) and the identified probability-box expression (d).
-
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
 \begin{subfigure}[b]{0.48\textwidth}
 \centering
@@ -166,7 +218,7 @@ Figure~\ref{fig:running-example} carries this model through the whole pipeline: 
 \end{tikzpicture}
 \caption{Input ADMG and its rootification ($T\leftrightarrow Y\Rightarrow R$).}
 \label{fig:re-admg}
-\end{subfigure}
+\end{subfigure}%
 \hfill
 \begin{subfigure}[b]{0.48\textwidth}
 \centering
@@ -175,23 +227,26 @@ Figure~\ref{fig:running-example} carries this model through the whole pipeline: 
   sb/.style={draw, fill=white, font=\footnotesize, inner sep=2pt, minimum height=0.4cm},
   cp/.style={circle, fill, inner sep=1.3pt}
 ]
-\draw[fill=gray!20] (-0.16,3.4) -- (0.16,3.4) -- (0,3.12) -- cycle;
-\node[above=0pt] at (0,3.4) {$R$};
-\node[cp] (cu) at (0,2.8) {};
-\draw (0,3.12) -- (cu);
-\node[box] (cy1) at (-1.5,1.2) {$c_Y$};
-\draw[fill=gray!20] (-1.66,2.4) -- (-1.34,2.4) -- (-1.5,2.12) -- cycle;
-\node[left=1pt] at (-1.66,2.3) {$\omega_T$};
-\draw (cu) -- (-1.0,2.8) -- (-1.0,1.2) -- (cy1.east);
-\draw (-1.5,2.12) -- (cy1.north);
-\draw (cy1.south) -- (-1.5,0.1);
-\node at (-1.5,-0.15) {$Y$};
-\node[box] (cy2) at (1.2,1.2) {$c_Y$};
-\node[sb] (dox) at (1.2,2.0) {$\mathsf{do}\,t$};
-\draw (cu) -- (1.7,2.8) -- (1.7,1.2) -- (cy2.east);
-\draw (dox.south) -- (cy2.north);
-\draw (cy2.south) -- (1.2,0.1);
-\node at (1.2,-0.15) {$Y_t$};
+% shared latent R at the bottom, apex up
+\draw[fill=gray!20] (-0.16,-0.2) -- (0.16,-0.2) -- (0,0.08) -- cycle;
+\node[below=0pt] at (0,-0.2) {$R$};
+\node[cp] (cu) at (0,0.5) {};
+\draw (0,0.08) -- (cu);
+% factual world (left)
+\node[box] (cy1) at (-1.5,2.0) {$c_Y$};
+\draw[fill=gray!20] (-1.66,0.8) -- (-1.34,0.8) -- (-1.5,1.08) -- cycle;
+\node[left=1pt] at (-1.66,0.95) {$\omega_T$};
+\draw (cu) -- (-1.0,0.5) -- (-1.0,2.0) -- (cy1.east);
+\draw (-1.5,1.08) -- (cy1.south);
+\draw (cy1.north) -- (-1.5,3.1);
+\node at (-1.5,3.35) {$Y$};
+% counterfactual world (right)
+\node[box] (cy2) at (1.2,2.0) {$c_Y$};
+\node[sb] (dox) at (1.2,1.05) {$\mathsf{do}\,t$};
+\draw (cu) -- (1.7,0.5) -- (1.7,2.0) -- (cy2.east);
+\draw (dox.north) -- (cy2.south);
+\draw (cy2.north) -- (1.2,3.1);
+\node at (1.2,3.35) {$Y_t$};
 \end{tikzpicture}
 \caption{Parallel worlds: factual $Y$ and counterfactual $Y_t$ share the latent $R$.}
 \label{fig:re-pw}
@@ -217,44 +272,32 @@ Figure~\ref{fig:running-example} carries this model through the whole pipeline: 
 \label{fig:running-example}
 \end{figure}
 
+\paragraph{Comb-Disintegration Causal Inference Extension.}
+In addition to counterfactual identification, the prototype includes a scoped causal-inference extension based on comb disintegration, exposed through \texttt{infer\_causal\_effect} rather than \texttt{identify\_counterfactual}. Given a Catlab string diagram, an observational joint distribution, and a user-specified comb structure (context, intervention, bridge, and outcome variables; the input contract is documented in the README API), it checks whether the diagram admits the required comb decomposition and, if so, computes the interventional effect $P(C \mid A, \mathrm{do}(X))$ numerically from the joint table.
+
+This extension is demonstrated on a small smoking example and a larger HEPAR2-based clinical example---for instance, how chronic hepatitis would be distributed under interventions on hospital, surgery, and choledocholithotomy history, with injections and transfusion as bridge variables. Here the diagram serves only to validate that comb disintegration applies, while the numbers come from a separate finite synthetic joint table over the selected variables; lifting this limitation---attaching a stochastic map to each box and composing them to derive the joint directly---is left to future work.
+
+\paragraph{Data Structures and Design Decisions.}
+The data types track the pipeline stages above. Causal models are described by an \texttt{ADMGModel} (directed and bidirected edge lists), which Step~1's rootification turns into a \texttt{ConfoundedModel} (directed edges plus a map from each latent root to the variables it confounds); a \texttt{CounterfactualQuery} specifies, per world, the interventions, observations, and output variables. From simplification onwards every state is a Catlab \texttt{WiringDiagram}, so identification proceeds entirely by pattern-matching on box names and rewiring, with no separate symbolic graph representation. Final expressions use a small term language (atomic probability factors, products, sums, fractions): identifiable queries are reported as algebraic formulas matching the output style of existing tools, and non-identifiable ones report the stage and box at which absorption failed.
+
+Two further properties characterise the design. Because every intermediate stage is kept explicit and exported to Chyp, each transformation is inspectable---unlike symbolic tools, where decomposition and simplification are internal. And because the stages mirror the theoretical algorithm one-to-one, each can be tested and optimised independently; the \texttt{test/} suite exercises every stage as a separate module-level test set (the breakdown is listed in the README).
+
 \section{Empirical Evaluation}\label{sec:discussion}
-We evaluate the prototype along two dimensions: correctness and runtime performance. Correctness is assessed through a differential testing harness against the reference R implementation \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs, while runtime performance is measured against both \texttt{cfid} and the Python \texttt{y0} library. This separation is important: the correctness harness first checks that the implementation returns verdicts consistent with an established counterfactual-identification tool, and the runtime benchmarks then measure the cost of obtaining those results.
+We evaluate the prototype along two dimensions. Correctness is assessed through a differential testing harness against \texttt{cfid}~\cite{cfid_package}, the reference R implementation of ID-CF on ADMGs; runtime is then measured against both \texttt{cfid} and the Python \texttt{y0} library. The harness first checks that we return verdicts consistent with an established tool, and the benchmarks measure the cost of obtaining them.
 
 \paragraph{Differential correctness testing.}
-Before measuring speed, we first run a differential correctness harness in \texttt{comparisons/correctness/}. The harness generates counterfactual identification problems, translates each case into both the Julia input format and the R \texttt{cfid} input format, and compares the ID/FAIL verdicts returned by the two tools.
+The harness (in \texttt{comparisons/correctness/}) generates counterfactual identification problems, translates each case into both the Julia and the R \texttt{cfid} input formats, and compares the ID/FAIL verdicts returned by the two tools.
 
 The corpus contains structured benchmark cases and randomly sampled bow-free ADMGs over 5--8 nodes. Each random graph is paired with a generated conditional counterfactual query, and cases that reduce to ordinary single-world interventional queries are filtered out. The comparison uses \texttt{cfid} version 0.1.9 and the interventional-data setting, matching the current scope of the implementation.
 
-\begin{table}[t]
-\centering
-\caption{Systematic differential correctness test against R \texttt{cfid}.}
-\label{tab:correctness-harness}
-\begin{tabular}{lr}
-\toprule
-Metric & Value \\
-\midrule
-Total cases & 1860 \\
-Comparable cases & 1860 \\
-Agreements & 1832 \\
-Disagreements & 28 \\
-Tool errors & 0 \\
-Agreement rate & 98.5\% \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:correctness-harness} shows that the Julia implementation agrees with \texttt{cfid} on 1832 out of 1860 comparable cases, giving a 98.5\% agreement rate. The remaining disagreements are boundary cases where one tool returns ID and the other returns FAIL. Since a FAIL can also reflect a conservative limitation of an implementation rather than a proof of non-identifiability, these cases are treated as targets for further investigation rather than direct counterexamples to soundness.
+Across all $1860$ comparable cases (with no tool errors), the Julia implementation agrees with \texttt{cfid} on $1832$, a $98.5\%$ agreement rate. The few remaining boundary cases, where one tool returns ID and the other FAIL, do not necessarily indicate a defect: a FAIL can reflect a conservative limitation of an implementation rather than a proof of non-identifiability, so these are treated as targets for further investigation rather than counterexamples to soundness.
 
 
 
 \paragraph{Runtime benchmarking.}
-Having established a high level of cross-tool agreement, we next compare runtime performance. We evaluate the prototype against \texttt{cfid} and the Python \texttt{y0} library. The benchmark harnesses live in \texttt{comparisons/\allowbreak runtime/} (\texttt{julia\_\allowbreak benchmark.jl}, \texttt{r\_cfid\_\allowbreak benchmark.R}, and \texttt{python\_y0\_\allowbreak benchmark.py}); all timings are warm medians over repeated executions on a standard desktop. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges).
+Given this high cross-tool agreement, we next compare runtime against \texttt{cfid} and \texttt{y0}. The harnesses live in \texttt{comparisons/\allowbreak runtime/} (\texttt{julia\_\allowbreak benchmark.jl}, \texttt{r\_cfid\_\allowbreak benchmark.R}, \texttt{python\_y0\_\allowbreak benchmark.py}); all timings are warm medians over repeated executions on a standard desktop. We use two families of inputs: three standard queries---\texttt{drug}, \texttt{party}, and a conditional counterfactual query on the real-world \texttt{hepar2} network---and synthetic graph families of controllable size and topology (\texttt{chain}, \texttt{fanin}, \texttt{dense}, and a confounded chain \texttt{chain\_bi} carrying bidirected edges). The warm-median runtimes are collected below for the standard queries (top block) and the synthetic families at $n=32$ (bottom block); each speedup ratio is the baseline total runtime divided by Julia's, so a value above $1$ means Julia is faster and below $1$ slower.
 
-
-\begin{table}[t]
-\centering
-\caption{Warm-median runtime comparison against R \texttt{cfid} and Python \texttt{y0}: standard benchmark queries (top) and synthetic graph families at $n=32$ (bottom). Speedup ratios are baseline total runtime divided by Julia total runtime. A ratio above $1$ means Julia is faster; a ratio below $1$ means Julia is slower.}
-\label{tab:speedup}
+\begin{center}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrrrrr}
 \toprule
@@ -283,26 +326,21 @@ Case & Julia (ms) & R \texttt{cfid} (ms) & Python \texttt{y0} (ms) & R/Julia & \
 \bottomrule
 \end{tabular}%
 }
-\end{table}
+\end{center}
 
-On the standard benchmarks (Table~\ref{tab:speedup}, top), the categorical tool is consistently faster than R \texttt{cfid}: by roughly $2.7\times$ on the small \texttt{drug} and \texttt{party} queries, and by $86\times$ on the larger \texttt{hepar2\_conditional} network. The comparison with Python \texttt{y0} is more mixed. On the small \texttt{drug} and \texttt{party} examples \texttt{y0} is faster, suggesting that a direct graph-level implementation has lower overhead on small queries; but on the larger \texttt{hepar2\_conditional} benchmark Julia is about $22\times$ faster, indicating that the explicit simplification pipeline becomes more beneficial as the model grows.
+On the standard benchmarks (top block), the categorical tool is consistently faster than R \texttt{cfid}---by roughly $2.7\times$ on the small \texttt{drug} and \texttt{party} queries and by $86\times$ on the larger \texttt{hepar2\_conditional} network. The comparison with Python \texttt{y0} is more mixed: \texttt{y0} is faster on the small queries, where a direct graph-level implementation has lower overhead, but on \texttt{hepar2\_conditional} Julia is about $22\times$ faster, so the explicit simplification pipeline becomes more beneficial as the model grows.
 
-A stage-level breakdown explains this behaviour. The dominant cost in the Julia pipeline is the explicit \emph{simplification} stage---in the \texttt{drug} benchmark it accounts for most of the runtime---while identification itself (Steps~4--5) is comparatively lightweight; R \texttt{cfid}, by contrast, exposes the main computation through the single \texttt{identifiable} call. The categorical method therefore trades a heavier simplification phase for a very light identification phase, which pays off when simplification substantially reduces the later identification problem, especially on larger or structurally favourable graphs.
+A stage-level breakdown explains this. The dominant cost in the Julia pipeline is the explicit \emph{simplification} stage (in \texttt{drug} it accounts for most of the runtime), while identification itself (Steps~4--5) is lightweight; R \texttt{cfid}, by contrast, exposes the main computation through a single \texttt{identifiable} call. The categorical method thus trades a heavier simplification phase for a very light identification phase, which pays off when simplification substantially reduces the later problem, especially on larger or structurally favourable graphs.
 
-The synthetic families expose this structure-dependent behaviour more clearly (Table~\ref{tab:speedup}, bottom). On \texttt{chain}, \texttt{fanin}, and \texttt{dense}, Julia is faster than R \texttt{cfid}, with speed-ups of $6.13\times$, $3.79\times$, and $2.34\times$, respectively. Compared with Python \texttt{y0}, Julia is faster on \texttt{chain} and \texttt{dense}, and roughly comparable on \texttt{fanin}. These results suggest that the diagrammatic pipeline is competitive on sparse and moderately connected graph structures.
-
-The main limitation appears on the heavily confounded \texttt{chain\_bi} family. Here the result reverses: Julia is slower than both R \texttt{cfid} and Python \texttt{y0}, with ratios of $0.38\times$ and $0.04\times$, respectively. The reason is that bidirected confounding greatly increases the cost of diagrammatic simplification. The identification phase remains small, but the preprocessing cost dominates the total runtime.
+The synthetic families expose this structure-dependence more clearly (bottom block). Julia is faster than R \texttt{cfid} on \texttt{chain}, \texttt{fanin}, and \texttt{dense}, and faster than \texttt{y0} on \texttt{chain} and \texttt{dense} (roughly comparable on \texttt{fanin}), so the diagrammatic pipeline is competitive on sparse and moderately connected structures. The result reverses only on the heavily confounded \texttt{chain\_bi} family, where Julia is slower than both baselines: bidirected confounding greatly inflates the cost of simplification, and this preprocessing---not identification, which stays small---dominates the total runtime.
 
 
 \paragraph{Comb-Disintegration Causal Inference Benchmarks.}
 We also evaluate the comb-disintegration extension against pyAgrum's \texttt{causalImpact}. This comparison is separate from the ID-CF one above: \texttt{cfid} and \texttt{y0} return symbolic identification formulas, whereas the comb-disintegration extension returns concrete numerical interventional distributions. We use HEPAR2-derived examples whose selected variables form clinically meaningful exposure-outcome patterns, running both tools on the same variables and comparing the resulting distributions.
 
-pyAgrum is faster on the smallest selected structures, but Julia becomes more competitive as the comb grows and is consistently faster on the medium and larger cases (speed-ups of roughly \(1.1\times\)--\(2.0\times\); Table~\ref{tab:comb-pyagrum}). Despite the extra diagrammatic validation step, exploiting the selected comb structure---rather than solving the effect as a single undifferentiated inference problem---makes the workflow computationally competitive.
+Grouping the cases by selected comb size and taking the median warm-median runtime per group (the speedup is pyAgrum runtime divided by Julia's) gives:
 
-\begin{table}[t]
-\centering
-\caption{HEPAR2-derived numerical causal-inference benchmarks grouped by selected comb size. Runtime is the median warm-median runtime within each group. Speedup is pyAgrum runtime divided by Julia runtime.}
-\label{tab:comb-pyagrum}
+\begin{center}
 \setlength{\tabcolsep}{8pt}
 \begin{tabular}{ccrrr}
 \toprule
@@ -315,7 +353,7 @@ $4$ & $6$ & $7.15$ & $13.67$ & $1.91\times$ \\
 $5$ & $7$ & $8.11$ & $16.75$ & $2.06\times$ \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{center}
 
 \section{Discussion}\label{sec:conclusion}
 

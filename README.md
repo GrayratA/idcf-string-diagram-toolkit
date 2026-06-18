@@ -2,11 +2,51 @@
 
 Counterfactual identification prototype based on Julia/Catlab.
 
+## Where to Start (First-Time Users)
+
+The recommended entry point is the command-line driver `src/run_demo.jl`: it loads a
+model and a counterfactual query, calls `identify_counterfactual`, and prints whether the
+query is identifiable together with the resulting probability expression.
+
+1. Install dependencies (see [Setup](#setup)), then run the default commute example:
+
+   ```powershell
+   julia --project=. src/run_demo.jl
+   ```
+
+2. Inputs live under `examples/`, split by kind:
+   - `examples/admg_models/`: ADMG model inputs
+   - `examples/string_diagrams/`: string-diagram definitions
+   - `examples/queries/`: counterfactual query sets
+
+   A typical run selects a model and a matching query and inspects the printed result, with
+   optional trace files under `trace/` exposing the intermediate pipeline stages (disable
+   with `--no-trace`). See the [Demo Quickstart](#demo-quickstart) for more invocations.
+
+3. The comb-disintegration causal-inference examples in `examples/causal_inference/` are run
+   the same way through `infer_causal_effect` — supplying a diagram, a joint table, and the
+   four variable groups — returning a numerical interventional distribution such as
+   `P(C | do(S))` in the smoking example. See the
+   [Causal Inference API](#causal-inference-api-infer_causal_effect).
+
 ## Repository Layout
 
-- `src/`: core Julia implementation (`admg_compile`, `bn_import`, `simplify_cf`, `id_cf`, causal-inference utilities)
+- `src/`: core Julia implementation. The pipeline stages are
+  `admg_compile.jl` (ADMG rootification + SCM compilation), `build_multiverse`
+  (parallel-world construction), `simplify_cf.jl` (rewrite/simplification passes),
+  and `id_cf.jl` (Step 4 ID-CF identification and Step 5 expression output). The
+  remaining modules support the pipeline:
+  - `bn_import.jl`: ingest external Bayesian-network files (`.bif`/`.net`) as ADMGs
+    (see also `tools/import_bn_to_admg.jl`).
+  - `chyp_export.jl`: serialise any diagram to the Chyp format for inspection
+    (written per stage when `trace_dir` is set).
+  - `utils.jl`: shared box predicates and graph utilities (topological ordering,
+    signature matching).
+  - `run_demo.jl`: command-line driver; `main.jl`: the worked commute example.
   - `src/123.ipynb` and `src/test.ipynb` are development-time testing notebooks and can be ignored.
-- `test/`: Julia test suites (`admg_compile`, `simplify_cf`, `id_cf`)
+- `test/`: Julia test suites, organised as separate module-level test sets covering
+  ADMG compilation, multiverse construction, simplification, R-fragment partitioning,
+  and expression generation.
 - `net/`: Bayesian network structure files (for example `hepar2.net`)
 - `tools/`: helper scripts (for example BN-to-ADMG conversion)
 - `comparisons/`: benchmark scripts and comparison artifacts
