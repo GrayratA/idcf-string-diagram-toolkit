@@ -14,10 +14,14 @@ query is identifiable together with the resulting probability expression.
    julia --project=. src/run_demo.jl
    ```
 
-2. Inputs live under `examples/`, split by kind:
-   - `examples/admg_models/`: ADMG model inputs
-   - `examples/string_diagrams/`: string-diagram definitions
-   - `examples/queries/`: counterfactual query sets
+2. A model can be given in **either** of two interchangeable forms, both accepted by
+   `--diagram` (and by `identify_counterfactual`):
+   - `examples/admg_models/`: an **ADMG** (directed + bidirected edges); the first
+     pipeline stage compiles it into a string diagram.
+   - `examples/string_diagrams/`: a **string diagram** built directly as a Catlab
+     `WiringDiagram` — supplied as-is, skipping ADMG compilation.
+
+   Queries live in `examples/queries/` (counterfactual query sets).
 
    A typical run selects a model and a matching query and inspects the printed result, with
    optional trace files under `trace/` exposing the intermediate pipeline stages (disable
@@ -134,6 +138,31 @@ Example assets are separated under:
 - `examples/queries/`: counterfactual query sets
 
 See `examples/README.md` for the file contract used by `src/run_demo.jl`.
+
+## Example Output (Chyp Export)
+
+With `trace_dir` set (tracing is on by default; disable with `--no-trace`), every
+pipeline stage is serialised to the Chyp format for inspection under `trace/`. For the
+running commute example, the **simplified diagram** (Step 3) and the **identified
+estimand** as probability boxes (Step 5) look like this:
+
+| Step 3 — simplified diagram | Step 5 — identified estimand |
+| --- | --- |
+| ![Simplified diagram](paper/simplify.png) | ![Identified estimand](paper/idcf.png) |
+
+(Chyp uses a limited character set, so some symbols are mangled in the labels.)
+
+## Core Data Types
+
+- `ADMGModel`: the input causal model, as directed and bidirected edge lists.
+- `ConfoundedModel`: produced by rootification — directed edges plus a map from each
+  latent root to the variables it confounds.
+- `CounterfactualQuery`: per world, the interventions, observations, and output variables.
+- From simplification onwards every state is a Catlab `WiringDiagram`; identification
+  proceeds by pattern-matching on box names and rewiring, with no separate symbolic graph.
+- Final expressions use a small term language (atomic probability factors, products, sums,
+  fractions): identifiable queries become algebraic formulas matching existing tools'
+  output style, and non-identifiable ones report the stage and box where absorption failed.
 
 ## Counterfactual API (`identify_counterfactual`)
 
