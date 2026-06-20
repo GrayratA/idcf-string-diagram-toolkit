@@ -47,7 +47,6 @@ query is identifiable together with the resulting probability expression.
   - `utils.jl`: shared box predicates and graph utilities (topological ordering,
     signature matching).
   - `run_demo.jl`: command-line driver; `main.jl`: the worked commute example.
-  - `src/123.ipynb` and `src/test.ipynb` are development-time testing notebooks and can be ignored.
 - `test/`: Julia test suites, organised as separate module-level test sets covering
   ADMG compilation, multiverse construction, simplification, R-fragment partitioning,
   and expression generation.
@@ -57,7 +56,7 @@ query is identifiable together with the resulting probability expression.
   - `comparisons/correctness/`: differential correctness harness against R `cfid`
   - `comparisons/runtime/`: primary Julia vs R runtime benchmarks
   - `comparisons/runtime/structural_tests/`: structural scaling scripts/data/profiles
-- `trace/`: intermediate trace artifacts
+- `src/trace/`: generated intermediate Chyp trace artifacts
 
 ## Setup
 
@@ -363,7 +362,7 @@ Rscript comparisons/correctness/run_cfid.R comparisons/correctness/corpus.R comp
 python comparisons/correctness/compare.py comparisons/correctness/corpus.json comparisons/correctness/verdicts_julia.tsv comparisons/correctness/verdicts_cfid.tsv comparisons/correctness/report.md
 ```
 
-Note: `compare.py` exits non-zero if any disagreement is found. This is useful for regression testing, but disagreements should be inspected rather than treated automatically as proof that one tool is wrong.
+Note: `compare.py` exits non-zero if any disagreement is found. This is useful for regression testing, but disagreements should be inspected rather than treated automatically as proof that one tool is wrong. The full generated corpus may produce known disagreements, so a non-zero exit here does not necessarily mean the tool crashed; inspect the generated `report.md`.
 
 For details, see:
 
@@ -376,6 +375,7 @@ Run main runtime comparison:
 ```powershell
 julia --project=. comparisons/runtime/julia_benchmark.jl 30 5
 Rscript comparisons/runtime/r_cfid_benchmark.R 30 5
+python comparisons/runtime/python_y0_benchmark.py 30 5
 ```
 
 For benchmark fields, alignment notes, and structural-test workflow, see:
@@ -387,7 +387,7 @@ For benchmark fields, alignment notes, and structural-test workflow, see:
 Example:
 
 ```powershell
-julia comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_julia_r4w2.txt
+julia --project=. comparisons/runtime/structural_tests/scripts/struct_scaling_julia.jl 4 2 8,16,24,32 | Tee-Object -FilePath comparisons/runtime/structural_tests/raw/struct_julia_r4w2.txt
 ```
 
 ```powershell
