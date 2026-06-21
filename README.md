@@ -151,6 +151,13 @@ estimand** as probability boxes (Step 5) look like this:
 
 (Chyp uses a limited character set, so some symbols are mangled in the labels.)
 
+**Visual companion.** For the whole pipeline as a single document — input ADMG and
+rootification, compiled string diagram, parallel-world (twin) construction, simplified
+diagram, and identified estimand — see the figure gallery
+[figure-gallery.pdf](figure-gallery.pdf). It walks the commute example
+through every stage, so the diagrammatic representation can be inspected directly at
+each step.
+
 ## Core Data Types
 
 - `ADMGModel`: the input causal model, as directed and bidirected edge lists.
