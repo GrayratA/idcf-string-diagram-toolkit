@@ -1,8 +1,8 @@
-seed,total_cases,comparable_cases,agreements,disagreements,tool_errors,agreement_rate
-1,310,310,308,2,0,99.4%
-2,310,310,306,4,0,98.7%
-3,310,310,303,7,0,97.7%
-4,310,310,306,4,0,98.7%
-5,310,310,303,7,0,97.7%
-6,310,310,306,4,0,98.7%
-total,1860,1860,1832,28,0,98.5%
+seed,total_cases,comparable_cases,agreements,disagreements,julia_fail_cfid_id,julia_id_cfid_fail,tool_errors,agreement_rate
+1,310,310,308,2,2,0,0,99.4%
+2,310,310,306,4,3,1,0,98.7%
+3,310,310,303,7,4,3,0,97.7%
+4,310,310,306,4,3,1,0,98.7%
+5,310,310,303,7,6,1,0,97.7%
+6,310,310,306,4,3,1,0,98.7%
+total,1860,1860,1832,28,21,7,0,98.5%
